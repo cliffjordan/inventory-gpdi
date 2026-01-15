@@ -65,25 +65,17 @@ export default function SuperuserPage() {
   const [isScanningUsers, setIsScanningUsers] = useState(false);
 
   // --- STATE MODALS (NEW FEATURES - INTELLIGENCE) ---
-  // 1. Dynamic Protocol
   const [showFormBuilderModal, setShowFormBuilderModal] = useState(false);
   const [formFields, setFormFields] = useState<any[]>([]);
   const [newField, setNewField] = useState({ label: '', type: 'text', required: false });
-
-  // 2. Internal Ticketing
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [tickets, setTickets] = useState<any[]>([]);
-  
-  // 3. Deep Health Check
   const [showHealthModal, setShowHealthModal] = useState(false);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
   const [healthStats, setHealthStats] = useState<any>(null);
-
-  // 4. Data Time Machine
   const [showTimeMachineModal, setShowTimeMachineModal] = useState(false);
   const [itemHistory, setItemHistory] = useState<any[]>([]);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<any>(null);
-
 
   // --- INITIAL CHECK ---
   useEffect(() => {
@@ -113,7 +105,6 @@ export default function SuperuserPage() {
     setSystemStatus(data?.value === 'true');
   };
 
-  // --- CORE FUNCTIONS ---
   const handleLogout = async () => {
     const toastId = toast.loading("Logging out...");
     await supabase.auth.signOut();
@@ -125,14 +116,39 @@ export default function SuperuserPage() {
     await supabase.from('audit_logs').insert({ admin_name: 'The Architect', action, details });
   };
 
+  // --- LOGIC DATABASE: APPROVALS (FIXED TYPESCRIPT ERROR HERE) ---
   const fetchApprovals = async () => {
     try {
         const combinedData = [];
         const { data: migrations } = await supabase.from('migration_requests').select(`*, requested_by_profile:requested_by(full_name, no_induk)`).eq('status', 'pending');
-        if (migrations) migrations.forEach(m => combinedData.push({ id: m.id, table: 'migration_requests', type: 'MIGRATION', user: m.requested_by_profile?.full_name || 'Unknown', request: 'Migrasi Akun (Merge)', details: `Source: ${m.source_id.slice(0,8)}... -> Target: ${m.target_id.slice(0,8)}...`, raw: m, time: new Date(m.created_at).toLocaleDateString() }));
+        if (migrations) {
+            migrations.forEach(m => combinedData.push({ 
+                id: m.id, 
+                table: 'migration_requests', 
+                type: 'MIGRATION', 
+                // Fix: Added 'as any' to prevent build error
+                user: (m.requested_by_profile as any)?.full_name || 'Unknown', 
+                request: 'Migrasi Akun (Merge)', 
+                details: `Source: ${m.source_id.slice(0,8)}... -> Target: ${m.target_id.slice(0,8)}...`, 
+                raw: m, 
+                time: new Date(m.created_at).toLocaleDateString() 
+            }));
+        }
         
         const { data: attendanceReqs } = await supabase.from('attendance_change_requests').select(`*, requested_by_profile:requested_by(full_name, no_induk)`).eq('status', 'pending');
-        if (attendanceReqs) attendanceReqs.forEach(a => combinedData.push({ id: a.id, table: 'attendance_change_requests', type: 'ATTENDANCE', user: a.requested_by_profile?.full_name || 'Unknown', request: `Ubah Absensi: ${a.old_status} -> ${a.new_status}`, details: `Alasan: ${a.reason}`, raw: a, time: new Date(a.created_at).toLocaleDateString() }));
+        if (attendanceReqs) {
+            attendanceReqs.forEach(a => combinedData.push({ 
+                id: a.id, 
+                table: 'attendance_change_requests', 
+                type: 'ATTENDANCE', 
+                // Fix: Added 'as any' to prevent build error
+                user: (a.requested_by_profile as any)?.full_name || 'Unknown', 
+                request: `Ubah Absensi: ${a.old_status} -> ${a.new_status}`, 
+                details: `Alasan: ${a.reason}`, 
+                raw: a, 
+                time: new Date(a.created_at).toLocaleDateString() 
+            }));
+        }
         
         setApprovals(combinedData);
     } catch (err) { console.error("Error fetching approvals:", err); }
@@ -197,66 +213,20 @@ export default function SuperuserPage() {
   const downloadTemplate = () => { let content = ""; if (bulkTemplates.member) content += "full_name,no_induk,role,phone_number\nJohn Doe,CM-UNR-001,member,08123456789\n\n"; if (bulkTemplates.item) content += "name,category,description\nKamera Canon,Elektronik,Kamera DSLR untuk dokumentasi\n\n"; if (bulkTemplates.variant) content += "item_name,color,size,stock,location\nKamera Canon,Hitam,Standard,1,Lemari A\n\n"; if (!content) { toast.error("Pilih minimal satu template!"); return; } const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", "bulk_import_templates.csv"); document.body.appendChild(link); link.click(); toast.success("Template Downloaded!"); };
 
   // --- NEW FEATURES LOGIC (REAL) ---
+  // 1. DYNAMIC PROTOCOL
+  const fetchFormFields = async () => { const { data } = await supabase.from('dynamic_form_fields').select('*').order('created_at'); setFormFields(data || []); };
+  const addFormField = async () => { if(!newField.label) return toast.error("Label wajib diisi"); await supabase.from('dynamic_form_fields').insert({ field_label: newField.label, field_type: newField.type, is_required: newField.required }); toast.success("Field added"); setNewField({ label: '', type: 'text', required: false }); fetchFormFields(); };
+  const deleteFormField = async (id: number) => { await supabase.from('dynamic_form_fields').delete().eq('id', id); toast.success("Field deleted"); fetchFormFields(); };
 
-  // 1. DYNAMIC PROTOCOL (Form Builder)
-  const fetchFormFields = async () => {
-    const { data } = await supabase.from('dynamic_form_fields').select('*').order('created_at');
-    setFormFields(data || []);
-  };
-  const addFormField = async () => {
-    if(!newField.label) return toast.error("Label wajib diisi");
-    await supabase.from('dynamic_form_fields').insert({ field_label: newField.label, field_type: newField.type, is_required: newField.required });
-    toast.success("Field added"); setNewField({ label: '', type: 'text', required: false }); fetchFormFields();
-  };
-  const deleteFormField = async (id: number) => {
-    await supabase.from('dynamic_form_fields').delete().eq('id', id);
-    toast.success("Field deleted"); fetchFormFields();
-  };
+  // 2. TICKETING
+  const fetchTickets = async () => { const { data } = await supabase.from('support_tickets').select(`*, profiles:user_id(full_name, no_induk)`).eq('status', 'open').order('created_at', { ascending: false }); setTickets(data || []); };
+  const resolveTicket = async (id: number) => { await supabase.from('support_tickets').update({ status: 'resolved' }).eq('id', id); toast.success("Tiket diselesaikan"); fetchTickets(); logAction("Ticket", `Resolved ticket ID ${id}`); };
 
-  // 2. INTERNAL TICKETING SYSTEM
-  const fetchTickets = async () => {
-    const { data } = await supabase.from('support_tickets').select(`*, profiles:user_id(full_name, no_induk)`).eq('status', 'open').order('created_at', { ascending: false });
-    setTickets(data || []);
-  };
-  const resolveTicket = async (id: number) => {
-    await supabase.from('support_tickets').update({ status: 'resolved' }).eq('id', id);
-    toast.success("Tiket diselesaikan"); fetchTickets();
-    logAction("Ticket", `Resolved ticket ID ${id}`);
-  };
+  // 3. HEALTH CHECK
+  const runDiagnostics = async () => { setIsCheckingHealth(true); try { const start = performance.now(); const { count: profileCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }); const { count: itemCount } = await supabase.from('items').select('*', { count: 'exact', head: true }); const { count: loanCount } = await supabase.from('loans').select('*', { count: 'exact', head: true }); const latency = (performance.now() - start).toFixed(2); setHealthStats({ dbLatency: `${latency}ms`, totalUsers: profileCount, totalItems: itemCount, activeLoans: loanCount, status: 'OPTIMAL' }); } catch (e) { setHealthStats({ status: 'CRITICAL', error: 'Connection Timeout' }); } finally { setIsCheckingHealth(false); } };
 
-  // 3. DEEP HEALTH CHECK (Diagnostic)
-  const runDiagnostics = async () => {
-    setIsCheckingHealth(true);
-    try {
-        const start = performance.now();
-        // Cek Latency & Koneksi
-        const { count: profileCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
-        const { count: itemCount } = await supabase.from('items').select('*', { count: 'exact', head: true });
-        const { count: loanCount } = await supabase.from('loans').select('*', { count: 'exact', head: true });
-        const latency = (performance.now() - start).toFixed(2);
-        
-        setHealthStats({
-            dbLatency: `${latency}ms`,
-            totalUsers: profileCount,
-            totalItems: itemCount,
-            activeLoans: loanCount,
-            status: 'OPTIMAL'
-        });
-    } catch (e) {
-        setHealthStats({ status: 'CRITICAL', error: 'Connection Timeout' });
-    } finally { setIsCheckingHealth(false); }
-  };
-
-  // 4. DATA TIME MACHINE (Audit Viewer)
-  const fetchItemHistory = async (itemName: string) => {
-    // Mencari log audit yang mengandung nama item di kolom details
-    const { data } = await supabase.from('audit_logs')
-        .select('*')
-        .ilike('details', `%${itemName}%`)
-        .order('timestamp', { ascending: false })
-        .limit(20);
-    setItemHistory(data || []);
-  };
+  // 4. TIME MACHINE
+  const fetchItemHistory = async (itemName: string) => { const { data } = await supabase.from('audit_logs').select('*').ilike('details', `%${itemName}%`).order('timestamp', { ascending: false }).limit(20); setItemHistory(data || []); };
 
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-red-500" size={40}/></div>;
 
@@ -268,7 +238,6 @@ export default function SuperuserPage() {
       {/* HEADER */}
       <header className="bg-slate-900/80 backdrop-blur-md border-b border-red-900/30 px-6 py-6 sticky top-0 z-30 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          {/* TOMBOL BACK SUDAH DIHAPUS DISINI */}
           <div>
             <h1 className="text-xl font-black text-white flex items-center gap-2 tracking-tight">THE ARCHITECT <span className="text-[10px] bg-red-600 px-2 py-0.5 rounded text-white tracking-widest">v2.0</span></h1>
             <p className="text-xs text-red-400 font-mono flex items-center gap-2"><div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"/> System Integrity: 100%</p>
@@ -277,13 +246,11 @@ export default function SuperuserPage() {
         <div className="flex items-center gap-3">
             {systemStatus && <div className="bg-red-500 text-white px-4 py-1.5 rounded-full text-xs font-bold animate-pulse hidden sm:block">LOCKDOWN ACTIVE</div>}
             
-            {/* Approval Notification */}
             <button onClick={() => setShowApprovalListModal(true)} className="p-3 bg-slate-800 border border-slate-700 rounded-2xl hover:bg-slate-700 transition relative">
                 <Bell size={20} className={approvals.length > 0 ? "text-amber-400" : "text-slate-400"} />
                 {approvals.length > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 text-slate-900 text-[10px] font-black flex items-center justify-center rounded-full animate-bounce">{approvals.length}</span>)}
             </button>
 
-            {/* NEW LOGOUT BUTTON */}
             <button onClick={handleLogout} className="p-3 bg-red-900/20 text-red-500 border border-red-500/30 rounded-2xl hover:bg-red-600 hover:text-white transition" title="Logout">
                 <LogOut size={20} />
             </button>
@@ -302,28 +269,24 @@ export default function SuperuserPage() {
             </section>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {/* Emergency */}
                 <div className="col-span-2 md:col-span-4 mb-2 mt-2 border-t border-slate-800 pt-4"><h3 className="text-xs font-bold text-red-500 uppercase tracking-widest ml-1 flex items-center gap-2"><ShieldAlert size={14}/> Emergency Controls</h3></div>
                 <MenuButton onClick={toggleLockdown} active={systemStatus} activeColor="bg-red-600 border-red-500 text-white shadow-[0_0_30px_rgba(220,38,38,0.5)]" icon={systemStatus ? <Lock size={32}/> : <Unlock size={32} className="text-red-500"/>} label="System Lockdown" />
                 <MenuButton onClick={() => setShowAnnounceModal(true)} icon={<MessageSquare size={32} className="text-blue-500"/>} label="Global Announcer" />
                 <MenuButton onClick={() => { fetchItems(); setShowForceResetModal(true); }} icon={<Zap size={32} className="text-amber-500"/>} label="Force Item Reset" />
                 <MenuButton onClick={() => setShowForceLogoutModal(true)} icon={<LogOut size={32} className="text-rose-500"/>} label="Force Logout All" />
 
-                {/* Maintenance */}
                 <div className="col-span-2 md:col-span-4 mb-2 mt-4 border-t border-slate-800 pt-4"><h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2"><Trash2 size={14}/> Maintenance</h3></div>
                 <MenuButton onClick={() => setShowJanitorModal(true)} icon={<HardDrive size={32} className="text-cyan-500"/>} label="Storage Janitor" />
                 <MenuButton onClick={scanGhostLoans} icon={<Ghost size={32} className="text-indigo-400"/>} label="Ghost Loan Detector" />
                 <MenuButton onClick={() => setShowGhostUserModal(true)} icon={<Trash2 size={32} className="text-slate-500"/>} label="Ghost User Purge" />
                 <MenuButton onClick={() => alert('Backup Started...')} icon={<Download size={32} className="text-emerald-500"/>} label="Database Vault" />
 
-                {/* Intelligence & Tools (NEW CATEGORY) */}
                 <div className="col-span-2 md:col-span-4 mb-2 mt-4 border-t border-slate-800 pt-4"><h3 className="text-xs font-bold text-cyan-500 uppercase tracking-widest ml-1 flex items-center gap-2"><Cpu size={14}/> Intelligence & Tools</h3></div>
                 <MenuButton onClick={() => { fetchFormFields(); setShowFormBuilderModal(true); }} icon={<ClipboardList size={32} className="text-teal-400"/>} label="Dynamic Protocol" />
                 <MenuButton onClick={() => { fetchTickets(); setShowTicketModal(true); }} icon={<Ticket size={32} className="text-pink-400"/>} label="Internal Ticketing" />
                 <MenuButton onClick={() => { runDiagnostics(); setShowHealthModal(true); }} icon={<Stethoscope size={32} className="text-green-400"/>} label="Deep Health Check" />
                 <MenuButton onClick={() => { fetchItems(); setShowTimeMachineModal(true); }} icon={<History size={32} className="text-orange-400"/>} label="Data Time Machine" />
 
-                {/* User & Config */}
                 <div className="col-span-2 md:col-span-4 mb-2 mt-4 border-t border-slate-800 pt-4"><h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2"><Users size={14}/> User & Config</h3></div>
                 <MenuButton onClick={() => { fetchMembersForAction(); setShowPinResetModal(true); }} icon={<Key size={32} className="text-purple-500"/>} label="PIN Reset" />
                 <MenuButton onClick={() => { fetchMembersForAction(); setShowRoleModal(true); }} icon={<UserCog size={32} className="text-pink-500"/>} label="Role Escalation" />
@@ -342,134 +305,17 @@ export default function SuperuserPage() {
       </div>
 
       <AnimatePresence>
-        {/* === APPROVALS === */}
-        {showApprovalListModal && (
-            <Modal title={`Pending Approvals (${approvals.length})`} onClose={() => setShowApprovalListModal(false)}>
-                {approvals.length === 0 ? (<div className="text-center py-10 text-slate-500 italic">No pending requests.</div>) : (
-                    <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-2">
-                        {approvals.map((item) => (
-                            <div key={item.id} onClick={() => { setSelectedApproval(item); setShowApprovalDetailModal(true); }} className="p-4 bg-slate-800 border border-slate-700 rounded-xl hover:border-amber-500 cursor-pointer transition-all flex justify-between items-center group">
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${item.type === 'MIGRATION' ? 'bg-purple-900/50 text-purple-400' : 'bg-blue-900/50 text-blue-400'}`}>{item.type === 'MIGRATION' ? <ArrowRightLeft size={18}/> : <FileText size={18}/>}</div>
-                                    <div><h4 className="text-sm font-bold text-slate-200">{item.request}</h4><p className="text-xs text-slate-500">{item.user} • {item.time}</p></div>
-                                </div>
-                                <ChevronRight size={18} className="text-slate-600 group-hover:text-amber-500"/>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </Modal>
-        )}
-        {showApprovalDetailModal && selectedApproval && (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-                <motion.div initial={{scale:0.9, opacity: 0}} animate={{scale:1, opacity: 1}} exit={{scale:0.9, opacity: 0}} className="bg-slate-900 border border-amber-500/50 w-full max-w-sm rounded-3xl p-6 shadow-2xl relative">
-                    <button onClick={() => setShowApprovalDetailModal(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X size={20}/></button>
-                    <h3 className="text-lg font-black text-amber-500 mb-6 border-l-4 border-amber-500 pl-3">Request Detail</h3>
-                    <div className="space-y-4 mb-8"><div className="p-4 bg-slate-800 rounded-xl"><p className="text-[10px] text-slate-500 uppercase font-bold">Request Type</p><p className="text-sm font-bold text-white">{selectedApproval.request}</p></div><div className="p-4 bg-slate-800 rounded-xl"><p className="text-[10px] text-slate-500 uppercase font-bold">Requester</p><p className="text-sm font-bold text-white">{selectedApproval.user}</p></div><div className="p-4 bg-slate-800 rounded-xl border border-slate-700"><p className="text-[10px] text-slate-500 uppercase font-bold">Details</p><p className="text-xs font-mono text-slate-300 mt-1">{selectedApproval.details}</p></div></div>
-                    <div className="grid grid-cols-2 gap-3"><button onClick={handleReject} className="py-3 bg-red-900/20 text-red-500 border border-red-900 font-bold rounded-xl hover:bg-red-900/40">Reject</button><button onClick={handleApprove} className="py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 shadow-lg shadow-emerald-900/20">Approve Request</button></div>
-                </motion.div>
-            </div>
-        )}
+        {/* APPROVAL MODALS */}
+        {showApprovalListModal && (<Modal title={`Pending Approvals (${approvals.length})`} onClose={() => setShowApprovalListModal(false)}>{approvals.length === 0 ? (<div className="text-center py-10 text-slate-500 italic">No pending requests.</div>) : (<div className="max-h-[60vh] overflow-y-auto space-y-2 pr-2">{approvals.map((item) => (<div key={item.id} onClick={() => { setSelectedApproval(item); setShowApprovalDetailModal(true); }} className="p-4 bg-slate-800 border border-slate-700 rounded-xl hover:border-amber-500 cursor-pointer transition-all flex justify-between items-center group"><div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${item.type === 'MIGRATION' ? 'bg-purple-900/50 text-purple-400' : 'bg-blue-900/50 text-blue-400'}`}>{item.type === 'MIGRATION' ? <ArrowRightLeft size={18}/> : <FileText size={18}/>}</div><div><h4 className="text-sm font-bold text-slate-200">{item.request}</h4><p className="text-xs text-slate-500">{item.user} • {item.time}</p></div></div><ChevronRight size={18} className="text-slate-600 group-hover:text-amber-500"/></div>))}</div>)}</Modal>)}
+        {showApprovalDetailModal && selectedApproval && (<div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"><motion.div initial={{scale:0.9, opacity: 0}} animate={{scale:1, opacity: 1}} exit={{scale:0.9, opacity: 0}} className="bg-slate-900 border border-amber-500/50 w-full max-w-sm rounded-3xl p-6 shadow-2xl relative"><button onClick={() => setShowApprovalDetailModal(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X size={20}/></button><h3 className="text-lg font-black text-amber-500 mb-6 border-l-4 border-amber-500 pl-3">Request Detail</h3><div className="space-y-4 mb-8"><div className="p-4 bg-slate-800 rounded-xl"><p className="text-[10px] text-slate-500 uppercase font-bold">Request Type</p><p className="text-sm font-bold text-white">{selectedApproval.request}</p></div><div className="p-4 bg-slate-800 rounded-xl"><p className="text-[10px] text-slate-500 uppercase font-bold">Requester</p><p className="text-sm font-bold text-white">{selectedApproval.user}</p></div><div className="p-4 bg-slate-800 rounded-xl border border-slate-700"><p className="text-[10px] text-slate-500 uppercase font-bold">Details</p><p className="text-xs font-mono text-slate-300 mt-1">{selectedApproval.details}</p></div></div><div className="grid grid-cols-2 gap-3"><button onClick={handleReject} className="py-3 bg-red-900/20 text-red-500 border border-red-900 font-bold rounded-xl hover:bg-red-900/40">Reject</button><button onClick={handleApprove} className="py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 shadow-lg shadow-emerald-900/20">Approve Request</button></div></motion.div></div>)}
 
-        {/* === NEW FEATURES MODALS === */}
-        {/* 1. DYNAMIC PROTOCOL (FORM BUILDER) */}
-        {showFormBuilderModal && (
-            <Modal title="Dynamic Protocol" onClose={() => setShowFormBuilderModal(false)}>
-                <div className="space-y-4">
-                    <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700">
-                        <p className="text-xs font-bold text-slate-400 mb-2">ADD NEW FIELD</p>
-                        <div className="flex gap-2 mb-2">
-                            <input type="text" placeholder="Label (e.g. Nama Event)" className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white" value={newField.label} onChange={e => setNewField({...newField, label: e.target.value})} />
-                            <select className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white" value={newField.type} onChange={e => setNewField({...newField, type: e.target.value})}>
-                                <option value="text">Text</option><option value="date">Date</option><option value="number">Number</option>
-                            </select>
-                        </div>
-                        <button onClick={addFormField} className="w-full py-2 bg-teal-600 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2"><Plus size={14}/> Add Field</button>
-                    </div>
-                    <div className="max-h-60 overflow-y-auto space-y-2">
-                        {formFields.map(f => (
-                            <div key={f.id} className="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-700">
-                                <div><p className="text-sm font-bold text-slate-200">{f.field_label}</p><p className="text-[10px] text-slate-500 uppercase">{f.field_type} {f.is_required && '(Required)'}</p></div>
-                                <button onClick={() => deleteFormField(f.id)} className="text-red-500 hover:text-red-400"><Trash2 size={16}/></button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </Modal>
-        )}
+        {/* FEATURE MODALS */}
+        {showFormBuilderModal && (<Modal title="Dynamic Protocol" onClose={() => setShowFormBuilderModal(false)}><div className="space-y-4"><div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700"><p className="text-xs font-bold text-slate-400 mb-2">ADD NEW FIELD</p><div className="flex gap-2 mb-2"><input type="text" placeholder="Label" className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white" value={newField.label} onChange={e => setNewField({...newField, label: e.target.value})} /><select className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white" value={newField.type} onChange={e => setNewField({...newField, type: e.target.value})}><option value="text">Text</option><option value="date">Date</option><option value="number">Number</option></select></div><button onClick={addFormField} className="w-full py-2 bg-teal-600 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2"><Plus size={14}/> Add Field</button></div><div className="max-h-60 overflow-y-auto space-y-2">{formFields.map(f => (<div key={f.id} className="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-700"><div><p className="text-sm font-bold text-slate-200">{f.field_label}</p><p className="text-[10px] text-slate-500 uppercase">{f.field_type} {f.is_required && '(Required)'}</p></div><button onClick={() => deleteFormField(f.id)} className="text-red-500 hover:text-red-400"><Trash2 size={16}/></button></div>))}</div></div></Modal>)}
+        {showTicketModal && (<Modal title={`Support Tickets (${tickets.length})`} onClose={() => setShowTicketModal(false)}>{tickets.length === 0 ? <p className="text-center text-slate-500 py-6">No open tickets.</p> : (<div className="max-h-[60vh] overflow-y-auto space-y-3">{tickets.map(t => (<div key={t.id} className="p-4 bg-slate-800 rounded-xl border border-slate-700"><div className="flex justify-between items-start mb-2"><h4 className="font-bold text-white text-sm">{t.subject}</h4><span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${t.priority === 'high' ? 'bg-red-500/20 text-red-400' : 'bg-slate-700 text-slate-400'}`}>{t.priority}</span></div><p className="text-xs text-slate-400 mb-3">{t.message}</p><div className="flex justify-between items-center"><span className="text-[10px] text-slate-500">By: {t.profiles?.full_name}</span><button onClick={() => resolveTicket(t.id)} className="px-3 py-1.5 bg-green-600/20 text-green-400 hover:bg-green-600 hover:text-white rounded-lg text-xs font-bold transition">Resolve</button></div></div>))}</div>)}</Modal>)}
+        {showHealthModal && (<Modal title="System Diagnostics" onClose={() => setShowHealthModal(false)}>{isCheckingHealth || !healthStats ? (<div className="text-center py-10"><Loader2 className="animate-spin mx-auto text-green-500 mb-2" size={32}/><p className="text-xs font-mono text-green-400">Running Deep Scan...</p></div>) : (<div className="space-y-4"><div className={`p-4 rounded-xl border text-center ${healthStats.status === 'OPTIMAL' ? 'bg-green-900/20 border-green-500/50' : 'bg-red-900/20 border-red-500'}`}><Activity size={32} className={`mx-auto mb-2 ${healthStats.status === 'OPTIMAL' ? 'text-green-500' : 'text-red-500'}`}/><h3 className="text-lg font-black text-white">{healthStats.status}</h3><p className="text-xs text-slate-400">{healthStats.error || "All systems nominal"}</p></div><div className="grid grid-cols-2 gap-3"><div className="p-3 bg-slate-800 rounded-lg"><p className="text-[10px] text-slate-500 uppercase">Latency</p><p className="text-lg font-mono text-white">{healthStats.dbLatency}</p></div><div className="p-3 bg-slate-800 rounded-lg"><p className="text-[10px] text-slate-500 uppercase">Total Users</p><p className="text-lg font-mono text-white">{healthStats.totalUsers}</p></div><div className="p-3 bg-slate-800 rounded-lg"><p className="text-[10px] text-slate-500 uppercase">Items</p><p className="text-lg font-mono text-white">{healthStats.totalItems}</p></div><div className="p-3 bg-slate-800 rounded-lg"><p className="text-[10px] text-slate-500 uppercase">Active Loans</p><p className="text-lg font-mono text-white">{healthStats.activeLoans}</p></div></div></div>)}</Modal>)}
+        {showTimeMachineModal && (<Modal title="Data Time Machine" onClose={() => {setShowTimeMachineModal(false); setItemHistory([]); setSelectedHistoryItem(null);}}><div className="mb-4"><p className="text-xs text-slate-400 mb-2">Select Item to View History:</p><select className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-white" onChange={(e) => { setSelectedHistoryItem(e.target.value); fetchItemHistory(e.target.options[e.target.selectedIndex].text); }}><option value="">-- Choose Item --</option>{items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select></div>{itemHistory.length > 0 && (<div className="relative pl-4 border-l-2 border-slate-800 space-y-6 max-h-[50vh] overflow-y-auto">{itemHistory.map((log) => (<div key={log.id} className="relative"><div className="absolute -left-[21px] top-1 w-3 h-3 bg-slate-900 border-2 border-orange-500 rounded-full"></div><p className="text-[10px] text-orange-500 font-mono mb-1">{new Date(log.timestamp).toLocaleDateString()} {new Date(log.timestamp).toLocaleTimeString()}</p><p className="text-sm font-bold text-white">{log.action}</p><p className="text-xs text-slate-500">{log.details}</p></div>))}</div>)}</Modal>)}
 
-        {/* 2. INTERNAL TICKETING */}
-        {showTicketModal && (
-            <Modal title={`Support Tickets (${tickets.length})`} onClose={() => setShowTicketModal(false)}>
-                {tickets.length === 0 ? <p className="text-center text-slate-500 py-6">No open tickets.</p> : (
-                    <div className="max-h-[60vh] overflow-y-auto space-y-3">
-                        {tickets.map(t => (
-                            <div key={t.id} className="p-4 bg-slate-800 rounded-xl border border-slate-700">
-                                <div className="flex justify-between items-start mb-2">
-                                    <h4 className="font-bold text-white text-sm">{t.subject}</h4>
-                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${t.priority === 'high' ? 'bg-red-500/20 text-red-400' : 'bg-slate-700 text-slate-400'}`}>{t.priority}</span>
-                                </div>
-                                <p className="text-xs text-slate-400 mb-3">{t.message}</p>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-[10px] text-slate-500">By: {t.profiles?.full_name}</span>
-                                    <button onClick={() => resolveTicket(t.id)} className="px-3 py-1.5 bg-green-600/20 text-green-400 hover:bg-green-600 hover:text-white rounded-lg text-xs font-bold transition">Resolve</button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </Modal>
-        )}
-
-        {/* 3. DEEP HEALTH CHECK */}
-        {showHealthModal && (
-            <Modal title="System Diagnostics" onClose={() => setShowHealthModal(false)}>
-                {isCheckingHealth || !healthStats ? (
-                    <div className="text-center py-10"><Loader2 className="animate-spin mx-auto text-green-500 mb-2" size={32}/><p className="text-xs font-mono text-green-400">Running Deep Scan...</p></div>
-                ) : (
-                    <div className="space-y-4">
-                        <div className={`p-4 rounded-xl border text-center ${healthStats.status === 'OPTIMAL' ? 'bg-green-900/20 border-green-500/50' : 'bg-red-900/20 border-red-500'}`}>
-                            <Activity size={32} className={`mx-auto mb-2 ${healthStats.status === 'OPTIMAL' ? 'text-green-500' : 'text-red-500'}`}/>
-                            <h3 className="text-lg font-black text-white">{healthStats.status}</h3>
-                            <p className="text-xs text-slate-400">{healthStats.error || "All systems nominal"}</p>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="p-3 bg-slate-800 rounded-lg"><p className="text-[10px] text-slate-500 uppercase">Latency</p><p className="text-lg font-mono text-white">{healthStats.dbLatency}</p></div>
-                            <div className="p-3 bg-slate-800 rounded-lg"><p className="text-[10px] text-slate-500 uppercase">Total Users</p><p className="text-lg font-mono text-white">{healthStats.totalUsers}</p></div>
-                            <div className="p-3 bg-slate-800 rounded-lg"><p className="text-[10px] text-slate-500 uppercase">Items</p><p className="text-lg font-mono text-white">{healthStats.totalItems}</p></div>
-                            <div className="p-3 bg-slate-800 rounded-lg"><p className="text-[10px] text-slate-500 uppercase">Active Loans</p><p className="text-lg font-mono text-white">{healthStats.activeLoans}</p></div>
-                        </div>
-                    </div>
-                )}
-            </Modal>
-        )}
-
-        {/* 4. DATA TIME MACHINE */}
-        {showTimeMachineModal && (
-            <Modal title="Data Time Machine" onClose={() => {setShowTimeMachineModal(false); setItemHistory([]); setSelectedHistoryItem(null);}}>
-                <div className="mb-4">
-                    <p className="text-xs text-slate-400 mb-2">Select Item to View History:</p>
-                    <select className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-white" onChange={(e) => { setSelectedHistoryItem(e.target.value); fetchItemHistory(e.target.options[e.target.selectedIndex].text); }}>
-                        <option value="">-- Choose Item --</option>
-                        {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-                    </select>
-                </div>
-                {itemHistory.length > 0 && (
-                    <div className="relative pl-4 border-l-2 border-slate-800 space-y-6 max-h-[50vh] overflow-y-auto">
-                        {itemHistory.map((log) => (
-                            <div key={log.id} className="relative">
-                                <div className="absolute -left-[21px] top-1 w-3 h-3 bg-slate-900 border-2 border-orange-500 rounded-full"></div>
-                                <p className="text-[10px] text-orange-500 font-mono mb-1">{new Date(log.timestamp).toLocaleDateString()} {new Date(log.timestamp).toLocaleTimeString()}</p>
-                                <p className="text-sm font-bold text-white">{log.action}</p>
-                                <p className="text-xs text-slate-500">{log.details}</p>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </Modal>
-        )}
-
-        {/* --- EXISTING MODALS (RETAINED) --- */}
+        {/* EXISTING MODALS */}
         {showForceLogoutModal && (<Modal title="CRITICAL ACTION" onClose={() => setShowForceLogoutModal(false)} variant="danger"><div className="text-center space-y-4"><div className="w-20 h-20 bg-red-900/30 text-red-500 rounded-full flex items-center justify-center mx-auto animate-pulse"><Power size={40} /></div><div><h3 className="text-xl font-black text-white">KILL ALL SESSIONS?</h3><p className="text-slate-400 text-sm mt-2">Paksa logout semua user.</p></div><div className="grid grid-cols-2 gap-3 pt-4"><button onClick={() => setShowForceLogoutModal(false)} className="py-3 bg-slate-800 text-slate-300 font-bold rounded-xl">Cancel</button><button onClick={executeForceLogout} className="py-3 bg-red-600 text-white font-bold rounded-xl">EXECUTE KILL</button></div></div></Modal>)}
         {showJanitorModal && (<Modal title="Storage Janitor" onClose={() => setShowJanitorModal(false)}>{!isScanningStorage && janitorScanResult.length === 0 ? (<div className="text-center py-6"><HardDrive size={48} className="mx-auto text-cyan-500 mb-4"/><p className="text-slate-400 text-sm mb-6">Scan bucket penyimpanan untuk mencari gambar sampah.</p><button onClick={scanStorage} className="w-full py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl flex items-center justify-center gap-2"><RefreshCw size={18}/> Start Scan (Real)</button></div>) : isScanningStorage ? (<div className="text-center py-10"><Loader2 className="animate-spin mx-auto text-cyan-500 mb-2" size={32}/><p className="text-xs font-mono text-cyan-400">Scanning Metadata...</p></div>) : (<div className="space-y-4"><p className="text-xs text-slate-400">Pilih file untuk dihapus (Total: {janitorScanResult.length}):</p><div className="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">{janitorScanResult.map(file => (<div key={file.id} onClick={() => setSelectedTrashFiles(prev => prev.includes(file.path) ? prev.filter(p => p !== file.path) : [...prev, file.path])} className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${selectedTrashFiles.includes(file.path) ? 'bg-red-900/20 border-red-500' : 'bg-slate-800 border-slate-700'}`}><ImageIcon size={16} className="text-slate-500"/><div className="flex-1 min-w-0"><p className="text-sm font-bold text-slate-200 truncate">{file.name}</p><p className="text-xs text-slate-500">{file.size}</p></div>{selectedTrashFiles.includes(file.path) && <CheckCircle size={18} className="text-red-500"/>}</div>))}</div><button onClick={deleteSelectedFiles} disabled={selectedTrashFiles.length === 0} className="w-full py-3 bg-red-600 hover:bg-red-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-xl flex items-center justify-center gap-2"><Trash2 size={18}/> Delete Selected ({selectedTrashFiles.length})</button></div>)}</Modal>)}
         {showGhostLoanModal && (<Modal title="Ghost Loan Detector" onClose={() => setShowGhostLoanModal(false)}>{ghostLoans.length === 0 ? (<div className="text-center py-6 text-emerald-400"><CheckCircle size={48} className="mx-auto mb-2"/><p>Database Integrity: 100%</p></div>) : (<div className="space-y-4"><p className="text-xs text-slate-400">Pinjaman Stuck (> 1 Tahun):</p><div className="max-h-60 overflow-y-auto space-y-2">{ghostLoans.map(loan => (<div key={loan.id} onClick={() => setSelectedGhostLoans(prev => prev.includes(loan.id) ? prev.filter(id => id !== loan.id) : [...prev, loan.id])} className={`p-3 rounded-xl border flex flex-col gap-1 cursor-pointer ${selectedGhostLoans.includes(loan.id) ? 'bg-indigo-900/20 border-indigo-500' : 'bg-slate-800 border-slate-700'}`}><div className="flex justify-between"><span className="font-bold text-white text-sm">{loan.item}</span><span className="text-[10px] bg-red-500/20 text-red-300 px-2 rounded">{loan.issue}</span></div><p className="text-xs text-slate-400">Borrower: {loan.borrower}</p></div>))}</div><button onClick={resolveGhostLoans} disabled={selectedGhostLoans.length === 0} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-bold rounded-xl">Resolve Selected ({selectedGhostLoans.length})</button></div>)}</Modal>)}
