@@ -1,3 +1,31 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* --- MODERN BACKGROUND MESH --- */
+body {
+  background-color: #f8fafc;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0, transparent 50%), 
+    radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.15) 0, transparent 50%), 
+    radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0, transparent 50%),
+    radial-gradient(at 0% 100%, rgba(245, 158, 11, 0.1) 0, transparent 50%);
+  background-attachment: fixed; /* Agar background tetap diam saat scroll */
+  background-size: cover;
+  min-height: 100vh;
+}
+
+/* Scrollbar Cantik (Chrome/Safari/Edge) */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

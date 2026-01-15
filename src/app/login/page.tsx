@@ -1,254 +1,228 @@
 "use client";
-import React, { useState } from 'react';
-import { supabase } from '@/lib/supabase'; 
+
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lock, Mail, User, ArrowRight, Loader2, CheckCircle } from 'lucide-react';
-import toast from 'react-hot-toast'; 
+import { supabase } from '@/lib/supabase';
+import { Phone, ArrowRight, Loader2, Delete, ChevronLeft, Lock, UserCheck, ShieldCheck, ShieldAlert } from 'lucide-react';
+import toast, { Toaster } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [isLogin, setIsLogin] = useState(true); 
-  const [loading, setLoading] = useState(false);
   
-  // State Form
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState(''); 
+  // State
+  const [step, setStep] = useState<'phone' | 'pin'>('phone');
+  const [phone, setPhone] = useState('');
+  const [pin, setPin] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [isSuperUserMode, setIsSuperUserMode] = useState(false); // Mode UI Superuser
 
-  const [showSuccess, setShowSuccess] = useState(false);
-
-  const handleAuth = async (e: React.FormEvent) => {
+  // --- LOGIC STEP 1: CEK NO HP & LOCKDOWN ---
+  const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    const cleanPhone = phone.replace(/\D/g, '');
+    const isSpecialID = cleanPhone === '01010202'; // ID The Architect
+
+    // Validasi Format (Jika bukan Special ID)
+    if (!isSpecialID && cleanPhone.length < 10) {
+      toast.error("Nomor HP terlalu pendek");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      if (isLogin) {
-        // --- LOGIKA LOGIN ---
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+      // 1. CEK STATUS LOCKDOWN ( MAINTENANCE )
+      // Logic: Jika maintenance aktif, hanya Superuser (Special ID) yang boleh lanjut.
+      if (!isSpecialID) {
+        const { data: setting } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'maintenance_mode')
+            .single();
 
-        if (error) {
-            throw error; 
-        }
-        
-        setShowSuccess(true);
-      
-      } else {
-        // --- LOGIKA DAFTAR ---
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-
-        if (authError) throw authError;
-
-        if (authData.user) {
-          // Simpan Profil
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert([
-              { 
-                id: authData.user.id,
-                full_name: fullName,
-                role: 'member'
-              }
-            ]);
-            
-          if (profileError) throw new Error("Gagal menyimpan profil: " + profileError.message);
-
-          setShowSuccess(true);
+        if (setting?.value === 'true') {
+            toast.error("SISTEM SEDANG MAINTENANCE/LOCKDOWN. Silakan coba lagi nanti.", {
+                icon: <ShieldAlert className="text-red-500"/>,
+                style: { border: '1px solid #ef4444', color: '#b91c1c' },
+                duration: 5000
+            });
+            setLoading(false);
+            return; // STOP PROSES DISINI
         }
       }
 
-    } catch (error: any) {
-      console.error("Login Error:", error.message);
-      
-      let pesan = "Terjadi kesalahan sistem.";
-
-      if (error.message.includes("Invalid login credentials")) {
-        pesan = "Email atau Password salah. Silakan cek lagi.";
-      } else if (error.message.includes("User already registered")) {
-        pesan = "Email ini sudah terdaftar. Silakan login.";
-      } else if (error.message.includes("Password should be at least")) {
-        pesan = "Password minimal 6 karakter.";
+      // 2. Format ke Dummy Email
+      let formattedPhone = cleanPhone;
+      if (formattedPhone.startsWith('0')) {
+        formattedPhone = '62' + formattedPhone.slice(1);
       }
+      const dummyEmail = `${formattedPhone}@cm.local`;
 
-      toast.error(pesan, {
-        duration: 4000,
-        style: {
-            background: '#FEF2F2',
-            color: '#991B1B',
-            border: '1px solid #FCA5A5',
-            fontWeight: 'bold'
-        }
+      // 3. Cek User via RPC
+      const { data: isExists, error } = await supabase.rpc('check_user_exists', {
+        email_check: dummyEmail
       });
 
+      if (error) throw error;
+
+      if (isExists) {
+        // Deteksi Superuser untuk efek visual
+        if (isSpecialID) {
+            setIsSuperUserMode(true);
+            toast.success("Identity Confirmed: The Architect", { 
+                icon: '🕶️', 
+                style: { background: '#0f172a', color: '#fff' } 
+            });
+        } else {
+            toast.dismiss();
+        }
+        setStep('pin');
+      } else {
+        toast.error("Nomor ini belum terdaftar. Silakan daftar dulu.", { 
+          icon: '🚫', duration: 4000 
+        });
+      }
+
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Gagal mengecek nomor. Pastikan koneksi aman.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSuccessRedirect = () => {
-    router.push('/dashboard');
+  // --- LOGIC STEP 2: NUMPAD & LOGIN ---
+  const handleNumpadClick = (value: string) => {
+    if (loading) return;
+    if (value === 'del') {
+      setPin((prev) => prev.slice(0, -1));
+    } else {
+      if (pin.length < 6) {
+        setPin((prev) => prev + value);
+      }
+    }
   };
 
-  const backdropVariants = { hidden: { opacity: 0 }, visible: { opacity: 1 } };
-  const modalVariants = {
-    hidden: { opacity: 0, scale: 0.9, y: 20 },
-    visible: { 
-      opacity: 1, 
-      scale: 1, 
-      y: 0, 
-      transition: { type: "spring" as const, stiffness: 300, damping: 25 } 
-    },
-    exit: { opacity: 0, scale: 0.95, y: 20 }
+  // Auto-Login saat PIN genap 6 digit
+  useEffect(() => {
+    if (pin.length === 6) {
+      executeLogin();
+    }
+  }, [pin]);
+
+  const executeLogin = async () => {
+    setLoading(true);
+    const toastId = toast.loading(isSuperUserMode ? "Accessing Mainframe..." : "Memverifikasi PIN...");
+
+    try {
+      let formattedPhone = phone.replace(/\D/g, '');
+      if (formattedPhone.startsWith('0')) formattedPhone = '62' + formattedPhone.slice(1);
+      const dummyEmail = `${formattedPhone}@cm.local`;
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email: dummyEmail,
+        password: pin,
+      });
+
+      if (error) throw error;
+
+      toast.success(isSuperUserMode ? "Access Granted." : "Login Berhasil!", { id: toastId });
+      
+      // Routing: Superuser ke Panel, Member ke Dashboard
+      if (isSuperUserMode) {
+          router.replace('/superuser');
+      } else {
+          router.replace('/dashboard');
+      }
+
+    } catch (error: any) {
+      console.error(error);
+      toast.error("PIN Salah!", { id: toastId });
+      setPin(''); 
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
+    <div className={`min-h-screen flex items-center justify-center p-4 font-sans overflow-hidden transition-colors duration-500 ${isSuperUserMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
+      <Toaster position="top-center" />
       
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-900 rounded-xl text-white font-bold text-xl mb-4">
-          CM
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900">Portal Pelayanan</h1>
-        <p className="text-gray-500 text-sm mt-1">Inventory Creative Ministry</p>
-      </div>
-
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl shadow-gray-200/50 overflow-hidden border border-gray-100">
+      <div className={`w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden relative min-h-[600px] flex flex-col transition-all duration-500 ${isSuperUserMode ? 'bg-slate-800 border border-slate-700 shadow-blue-900/20' : 'bg-white border border-slate-100'}`}>
         
-        <div className="flex text-sm font-medium border-b border-gray-100">
-          <button 
-            onClick={() => setIsLogin(true)}
-            className={`flex-1 py-4 text-center transition ${isLogin ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-400 hover:text-gray-600'}`}
-          >
-            Masuk
-          </button>
-          <button 
-            onClick={() => setIsLogin(false)}
-            className={`flex-1 py-4 text-center transition ${!isLogin ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-400 hover:text-gray-600'}`}
-          >
-            Daftar Akun
-          </button>
+        {/* HEADER */}
+        <div className={`p-8 text-center relative shrink-0 transition-colors duration-500 ${isSuperUserMode ? 'bg-red-900/20' : 'bg-blue-600'}`}>
+          {!isSuperUserMode && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-transparent to-black/10"></div>}
+          <div className={`w-16 h-16 backdrop-blur-md rounded-2xl mx-auto flex items-center justify-center text-3xl mb-3 shadow-lg border transition-all duration-500 ${isSuperUserMode ? 'bg-red-500/10 border-red-500/30 text-red-500' : 'bg-white/20 border-white/30 text-white'}`}>
+            {isSuperUserMode ? <ShieldCheck size={32}/> : '📦'}
+          </div>
+          <h1 className={`text-xl font-black tracking-tight relative z-10 transition-colors duration-500 ${isSuperUserMode ? 'text-red-500' : 'text-white'}`}>
+            {isSuperUserMode ? 'SYSTEM OVERRIDE' : 'Creative Ministry'}
+          </h1>
+          <p className={`text-[10px] font-medium relative z-10 mt-1 uppercase tracking-widest ${isSuperUserMode ? 'text-red-400' : 'text-blue-100'}`}>
+            {isSuperUserMode ? 'Superuser Access' : 'Inventory System'}
+          </p>
         </div>
 
-        <div className="p-8">
-          <h2 className="text-xl font-bold text-gray-800 mb-6">
-            {isLogin ? 'Selamat Datang Kembali!' : 'Gabung Tim Pelayanan'}
-          </h2>
-
-          <form onSubmit={handleAuth} className="space-y-4">
-            
-            {!isLogin && (
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-600 ml-1">Nama Lengkap</label>
-                <div className="relative">
-                  <User className="absolute left-4 top-3.5 text-gray-400" size={20} />
-                  <input 
-                    type="text" 
-                    required 
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Contoh: Sarah Debora"
-                    className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition"
-                  />
+        {/* CONTENT */}
+        <div className="flex-1 relative">
+          <AnimatePresence mode="wait">
+            {step === 'phone' && (
+              <motion.div key="phone-screen" initial={{ opacity: 0, x: -50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} className="p-8 flex flex-col justify-center h-full">
+                <form onSubmit={handlePhoneSubmit} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase ml-1">No. Handphone / WhatsApp</label>
+                    <div className="relative group">
+                      <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
+                      <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Contoh: 0812..." className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all placeholder:text-slate-300 text-lg" autoFocus />
+                    </div>
+                  </div>
+                  <button type="submit" disabled={loading} className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-600/30 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:bg-slate-300 disabled:shadow-none">
+                    {loading ? <Loader2 className="animate-spin" /> : <>LANJUT <ArrowRight size={20}/></>}
+                  </button>
+                </form>
+                <div className="mt-8 text-center pb-4">
+                  <p className="text-xs text-slate-400">Belum punya akun?</p>
+                  <Link href="/register" className="text-xs font-bold text-blue-600 mt-1 cursor-pointer hover:underline block p-2">Daftar Akun Baru</Link>
                 </div>
-              </div>
+              </motion.div>
             )}
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-600 ml-1">Email</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-3.5 text-gray-400" size={20} />
-                <input 
-                  type="email" 
-                  required 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="email@contoh.com"
-                  className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-600 ml-1">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-3.5 text-gray-400" size={20} />
-                <input 
-                  type="password" 
-                  required 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Minimal 6 karakter"
-                  minLength={6}
-                  className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition"
-                />
-              </div>
-            </div>
-
-            <button 
-              type="submit" 
-              disabled={loading}
-              className="w-full bg-blue-900 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/20 active:scale-95 transition-transform flex items-center justify-center gap-2 mt-4 hover:bg-blue-800"
-            >
-              {loading ? (
-                <Loader2 className="animate-spin" />
-              ) : (
-                <>
-                  {isLogin ? 'Masuk Sekarang' : 'Daftar Sekarang'}
-                  <ArrowRight size={20} />
-                </>
-              )}
-            </button>
-          </form>
+            {step === 'pin' && (
+              <motion.div key="pin-screen" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 50 }} className={`flex flex-col h-full ${isSuperUserMode ? 'text-white' : 'text-slate-800'}`}>
+                <div className="px-6 pt-6">
+                  <button onClick={() => { setStep('phone'); setIsSuperUserMode(false); }} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"><ChevronLeft size={16}/> Kembali</button>
+                </div>
+                <div className="flex-1 flex flex-col items-center justify-center mb-4">
+                  <div className="flex flex-col items-center mb-6">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-2 transition-colors duration-500 ${isSuperUserMode ? 'bg-red-500/10 text-red-500' : 'bg-blue-50 text-blue-600'}`}>
+                        {isSuperUserMode ? <Lock size={24}/> : <UserCheck size={24}/>}
+                    </div>
+                    <h2 className={`text-lg font-black ${isSuperUserMode ? 'text-white' : 'text-slate-800'}`}>{isSuperUserMode ? 'Security Clearance' : 'Masukkan PIN'}</h2>
+                    <p className="text-sm text-slate-400 font-medium tracking-widest">{phone}</p>
+                  </div>
+                  <div className="flex gap-4">
+                    {[...Array(6)].map((_, i) => (
+                      <div key={i} className={`w-4 h-4 rounded-full transition-all duration-200 ${i < pin.length ? (isSuperUserMode ? 'bg-red-500 scale-125 shadow-[0_0_10px_red]' : 'bg-blue-600 scale-125 shadow-lg') : 'bg-slate-200/50'}`}/>
+                    ))}
+                  </div>
+                </div>
+                <div className={`p-6 pb-8 rounded-t-[2.5rem] shadow-inner border-t transition-colors duration-500 ${isSuperUserMode ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
+                  <div className="grid grid-cols-3 gap-4 max-w-[280px] mx-auto">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((num) => (
+                      <button key={num} onClick={() => handleNumpadClick(num.toString())} disabled={loading} className={`h-16 rounded-2xl shadow-sm text-2xl font-bold active:scale-95 transition-all ${num === 0 ? 'col-start-2' : ''} ${isSuperUserMode ? 'bg-slate-800 text-white border border-slate-700 hover:bg-slate-700 active:bg-red-900' : 'bg-white border-b-4 border-slate-200 text-slate-700 active:border-b-0 active:translate-y-1 hover:bg-slate-50'}`}>{num}</button>
+                    ))}
+                    <button onClick={() => handleNumpadClick('del')} disabled={loading} className="h-16 rounded-2xl bg-transparent text-slate-400 flex items-center justify-center active:scale-95 transition-all hover:text-red-500 col-start-3 row-start-4"><Delete size={28}/></button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
-      
-      <p className="mt-8 text-gray-400 text-sm">
-        &copy; 2026 GPdI Resinda Inventory
-      </p>
-
-      {/* MODAL SUKSES */}
-      <AnimatePresence>
-        {showSuccess && (
-           <motion.div 
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-              initial="hidden" animate="visible" exit="hidden" variants={backdropVariants}
-           >
-              <motion.div 
-                  className="bg-white rounded-3xl p-8 shadow-2xl max-w-sm w-full text-center space-y-4"
-                  variants={modalVariants}
-              >
-                  <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-2 animate-bounce">
-                      <CheckCircle size={40} strokeWidth={3} />
-                  </div>
-                  <div>
-                      <h2 className="text-2xl font-bold text-gray-900 mb-1">
-                          {isLogin ? 'Login Berhasil!' : 'Pendaftaran Sukses!'}
-                      </h2>
-                      <p className="text-gray-500">
-                          {isLogin 
-                            ? 'Selamat melayani kembali.' 
-                            : 'Nomor Induk Anda (CM-XXX) sedang digenerate oleh sistem.'}
-                      </p>
-                  </div>
-                  <div className="pt-4">
-                      <button 
-                          onClick={handleSuccessRedirect}
-                          className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition shadow-lg active:scale-95"
-                      >
-                          Masuk Dashboard
-                      </button>
-                  </div>
-              </motion.div>
-           </motion.div>
-        )}
-      </AnimatePresence>
-
     </div>
   );
 }

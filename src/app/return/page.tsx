@@ -1,413 +1,248 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Package, CheckCircle, Calendar, ShieldCheck, Clock, Camera, X, Loader2, MousePointer2 } from 'lucide-react';
+import { 
+  ArrowLeft, Package, CheckCircle, Calendar, ShieldCheck, 
+  Clock, Camera, X, Loader2, MousePointer2, ChevronRight, ChevronDown, Tag, AlertCircle
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import imageCompression from 'browser-image-compression';
-
-// IMPORT PENTING
 import { motion, AnimatePresence } from 'framer-motion';
-import toast from 'react-hot-toast';
-import { supabase } from '@/lib/supabase'; // Koneksi Database
+import toast, { Toaster } from 'react-hot-toast';
+import { supabase } from '@/lib/supabase';
 
 export default function ReturnPage() {
   const router = useRouter();
-
-  // --- STATE ---
-  const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
-  const [myLoans, setMyLoans] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // --- STATE UPLOAD ---
   const [selectedLoan, setSelectedLoan] = useState<any>(null);
+  const [expandedTrans, setExpandedTrans] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  
   const [arrowPos, setArrowPos] = useState({ x: 50, y: 50 });
   const imageContainerRef = useRef<HTMLDivElement>(null);
 
-  // 1. AMBIL DATA PEMINJAMAN SAYA
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (!authUser) return router.push('/login');
-        setUser(authUser);
+  useEffect(() => { fetchData(); }, [router]);
 
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', authUser.id)
-          .single();
-        setProfile(profileData);
+  const fetchData = async () => {
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return router.push('/login');
 
-        const { data: loanData, error } = await supabase
-          .from('loans')
-          .select(`
-            id,
-            borrow_date,
-            variants:variant_id (
-              size,
-              items:item_id ( name, base_image_url )
+      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', authUser.id).single();
+      setProfile(profileData);
+
+      const { data: transData, error } = await supabase
+        .from('transactions')
+        .select(`
+          id, transaction_date, guest_name, user_id, 
+          loans (
+            id, status, borrowed_at, loan_category, reject_reason, 
+            variants:variant_id (id, size, color, items:item_id ( name, base_image_url ))
+          )
+        `)
+        .or(`user_id.eq.${authUser.id}`);
+
+      if (error) throw error;
+
+      if (transData) {
+        // FILTER: Hanya ambil transaksi yang memiliki item yang belum 'Selesai'
+        const filteredTransactions = transData
+          .map(trans => ({
+            ...trans,
+            loans: trans.loans.filter((l: any) => 
+              l.status === 'dipinjam' || 
+              l.status === 'pending_return' || 
+              l.status === 'perlu_perbaikan'
             )
-          `)
-          .eq('user_id', authUser.id)
-          .eq('status', 'dipinjam');
+          }))
+          .filter(trans => trans.loans.length > 0); 
 
-        if (error) throw error;
-        setMyLoans(loanData || []);
-
-      } catch (error) {
-        console.error("Gagal load data:", error);
-      } finally {
-        setLoading(false);
+        setTransactions(filteredTransactions);
       }
-    };
+    } catch (error) { console.error("Gagal load data:", error); } 
+    finally { setLoading(false); }
+  };
 
-    fetchData();
-  }, [router]);
-
-  // 2. PROSES UPLOAD FOTO (PREVIEW)
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const imageFile = event.target.files?.[0];
     if (!imageFile) return;
-
-    const loadingToast = toast.loading('Mengompres foto...');
     setIsProcessing(true);
-    setArrowPos({ x: 50, y: 50 }); 
-
-    const options = { maxSizeMB: 0.5, maxWidthOrHeight: 1280, useWebWorker: true };
-
     try {
-      const compressedFile = await imageCompression(imageFile, options);
+      const compressedFile = await imageCompression(imageFile, { maxSizeMB: 0.05, maxWidthOrHeight: 1024, useWebWorker: true });
       setPreviewUrl(URL.createObjectURL(compressedFile)); 
-      
-      toast.dismiss(loadingToast);
-      toast.success('Foto siap! Silakan tandai lokasi.');
-    } catch (error) {
-      console.log(error);
-      toast.dismiss(loadingToast);
-      toast.error("Gagal proses gambar.");
-    } finally {
-      setIsProcessing(false);
-    }
+      setArrowPos({ x: 50, y: 50 });
+      toast.success('Foto siap! Tandai lokasi.');
+    } catch (error) { toast.error("Gagal proses gambar."); } 
+    finally { setIsProcessing(false); }
   };
 
-  // 3. GESER PANAH MERAH
-  const handleImageClick = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+  const handleImageClick = (e: any) => {
     if (!imageContainerRef.current) return;
     const rect = imageContainerRef.current.getBoundingClientRect();
-    let clientX, clientY;
-    
-    if ('touches' in e) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = (e as React.MouseEvent).clientX;
-      clientY = (e as React.MouseEvent).clientY;
-    }
-
-    const x = ((clientX - rect.left) / rect.width) * 100;
-    const y = ((clientY - rect.top) / rect.height) * 100;
-    setArrowPos({ x, y });
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    setArrowPos({ x: ((clientX - rect.left) / rect.width) * 100, y: ((clientY - rect.top) / rect.height) * 100 });
   };
 
-  // 4. GENERATE GAMBAR FINAL (GABUNG FOTO + PANAH)
-  const generateFinalBlob = async (): Promise<Blob | null> => {
-    if (!previewUrl) return null;
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.src = previewUrl;
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            if (!ctx) { resolve(null); return; }
-
-            canvas.width = img.width;
-            canvas.height = img.height;
-            
-            ctx.drawImage(img, 0, 0);
-            
-            const arrowX = (arrowPos.x / 100) * canvas.width;
-            const arrowY = (arrowPos.y / 100) * canvas.height;
-
-            ctx.fillStyle = "red";
-            ctx.strokeStyle = "white";
-            ctx.lineWidth = 5;
-            ctx.beginPath();
-            ctx.moveTo(arrowX, arrowY);
-            ctx.lineTo(arrowX - 20, arrowY + 40);
-            ctx.lineTo(arrowX + 20, arrowY + 40);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.font = "bold 24px Arial";
-            ctx.fillStyle = "white";
-            ctx.fillText("Lokasi", arrowX - 35, arrowY + 70);
-
-            canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.8);
-        };
-    });
-  };
-
-  // 5. SUBMIT KE SUPABASE (FINAL)
   const handleConfirmReturn = async () => {
     if (!selectedLoan) return;
-    
     setIsProcessing(true);
-    const toastId = toast.loading('Mengupload bukti & menyimpan...');
-
+    const toastId = toast.loading('Mengupload bukti...');
+    
     try {
-        const finalBlob = await generateFinalBlob();
-        if (!finalBlob) throw new Error("Gagal memproses gambar final.");
+        // 1. Proses Gambar (Canvas)
+        const finalBlob = await new Promise<Blob | null>((resolve) => {
+            const img = new Image(); img.src = previewUrl!;
+            img.onload = () => {
+                const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
+                if (!ctx) return resolve(null);
+                canvas.width = img.width; canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                const arrowX = (arrowPos.x / 100) * canvas.width, arrowY = (arrowPos.y / 100) * canvas.height;
+                ctx.fillStyle = "red"; ctx.strokeStyle = "white"; ctx.lineWidth = 5;
+                ctx.beginPath(); ctx.moveTo(arrowX, arrowY); ctx.lineTo(arrowX - 20, arrowY + 40); ctx.lineTo(arrowX + 20, arrowY + 40); ctx.closePath(); ctx.fill(); ctx.stroke();
+                ctx.font = "bold 24px Arial"; ctx.fillStyle = "white"; ctx.fillText("Lokasi", arrowX - 35, arrowY + 70);
+                canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.7);
+            };
+        });
 
+        if (!finalBlob) throw new Error("Gagal proses gambar.");
+        
+        // 2. Upload ke Storage
         const fileName = `proof-${selectedLoan.id}-${Date.now()}.jpg`;
-        
-        const { error: uploadError } = await supabase
-            .storage
-            .from('inventory-proofs') 
-            .upload(fileName, finalBlob, {
-                contentType: 'image/jpeg'
-            });
+        await supabase.storage.from('inventory-proofs').upload(fileName, finalBlob, { contentType: 'image/jpeg' });
+        const { data: { publicUrl } } = supabase.storage.from('inventory-proofs').getPublicUrl(fileName);
 
-        if (uploadError) throw uploadError;
+        // 3. Update Data Loan
+        const { error: updateError } = await supabase.from('loans').update({ 
+          status: 'pending_return', 
+          returned_at: new Date().toISOString(), 
+          return_proof_url: publicUrl, 
+          reject_reason: null 
+        }).eq('id', selectedLoan.id);
 
-        const { data: { publicUrl } } = supabase
-            .storage
-            .from('inventory-proofs')
-            .getPublicUrl(fileName);
+        if (updateError) throw updateError;
 
-        const { error: dbError } = await supabase
-            .from('loans')
-            .update({
-                status: 'kembali',
-                return_date: new Date().toISOString(),
-                return_proof_url: publicUrl 
-            })
-            .eq('id', selectedLoan.id);
+        // 4. [BARU] CATAT KE AUDIT LOG (CCTV)
+        await supabase.from('audit_logs').insert({
+            admin_name: profile?.full_name || 'System',
+            action: 'Pengajuan Pengembalian',
+            details: `Mengupload bukti pengembalian untuk: ${selectedLoan.variants?.items?.name} (${selectedLoan.variants?.color})`
+        });
 
-        if (dbError) throw dbError;
+        toast.success("Berhasil dikirim ulang!", { id: toastId });
+        setSelectedLoan(null); setPreviewUrl(null); setShowSuccess(true);
+        fetchData(); 
 
-        setMyLoans(prev => prev.filter(loan => loan.id !== selectedLoan.id));
-        
-        toast.success("Barang berhasil dikembalikan!", { id: toastId });
-        
-        setSelectedLoan(null);
-        setPreviewUrl(null);
-        setShowSuccess(true);
-
-    } catch (error: any) {
-        console.error(error);
-        toast.error("Gagal: " + error.message, { id: toastId });
-    } finally {
-        setIsProcessing(false);
+    } catch (error: any) { 
+        toast.error("Gagal: " + error.message, { id: toastId }); 
+    } finally { 
+        setIsProcessing(false); 
     }
   };
 
-  const backdropVariants = { hidden: { opacity: 0 }, visible: { opacity: 1 } };
-  const modalVariants = {
-    hidden: { opacity: 0, scale: 0.9, y: 20 },
-    visible: { 
-      opacity: 1, 
-      scale: 1, 
-      y: 0, 
-      transition: { type: "spring" as const, stiffness: 300, damping: 25 } 
-    },
-    exit: { opacity: 0, scale: 0.95, y: 20 }
-  };
-
-  if (loading) {
-    return <div className="h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-600"/></div>;
-  }
+  if (loading) return <div className="h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-600"/></div>;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
+      <Toaster position="top-center"/> {/* Pastikan Toaster ada */}
       
-      <header className="bg-white p-4 sticky top-0 z-10 shadow-sm border-b border-gray-100">
-        <div className="flex items-center gap-4">
-          <Link href="/dashboard" className="p-2 hover:bg-gray-100 rounded-full transition">
-            <ArrowLeft size={24} className="text-gray-700" />
-          </Link>
-          <h1 className="text-xl font-bold text-gray-800">Pengembalian Saya</h1>
-        </div>
+      <header className="bg-white p-4 sticky top-0 z-10 shadow-sm border-b border-gray-100 flex items-center gap-4 text-left">
+        <Link href="/dashboard" className="p-2 hover:bg-gray-100 rounded-full transition"><ArrowLeft size={24} className="text-gray-700" /></Link>
+        <h1 className="text-xl font-bold text-gray-800">Pengembalian Saya</h1>
       </header>
 
       <main className="p-4 space-y-6">
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs text-gray-400 font-bold uppercase">Login Sebagai</p>
-            <h2 className="text-lg font-bold text-gray-800 capitalize">{profile?.full_name || '...'}</h2>
-            <p className="text-xs text-blue-600 font-mono">{profile?.no_induk || '...'}</p>
-          </div>
-          <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
-            <ShieldCheck size={20} />
-          </div>
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between text-left">
+          <div className="min-w-0"><p className="text-[10px] font-black text-gray-400 uppercase">Pelapor</p><h2 className="text-lg font-bold text-gray-800 truncate">{profile?.full_name}</h2></div>
+          <ShieldCheck className="text-blue-600" size={24} />
         </div>
 
-        <div>
-          <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <Clock size={16} className="text-blue-600"/>
-            Barang Yang Kamu Bawa
-          </h3>
-
-          <div className="space-y-3">
-            {myLoans.length > 0 ? (
-              myLoans.map((loan) => (
-                <div key={loan.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3 transition hover:shadow-md">
-                  <div className="flex gap-4">
-                    <div className={`w-16 h-16 ${loan.variants?.items?.base_image_url || 'bg-gray-200'} rounded-xl flex items-center justify-center flex-shrink-0`}>
-                        <Package className="text-white/50" size={24} />
-                    </div>
-                    <div>
-                        <h4 className="font-bold text-gray-800 text-sm">{loan.variants?.items?.name}</h4>
-                        <span className="inline-block bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded mt-1">
-                            {loan.variants?.size}
-                        </span>
-                        <div className="flex items-center gap-1 text-xs text-gray-400 mt-2">
-                            <Calendar size={12} />
-                            <span>Pinjam: {new Date(loan.borrow_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
-                        </div>
-                    </div>
+        <div className="space-y-4">
+          <h3 className="font-bold text-gray-700 flex items-center gap-2 text-left"><Clock size={16} className="text-blue-600"/> Daftar Pinjaman Aktif</h3>
+          {transactions.map((trans) => (
+            <div key={trans.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden text-left">
+              <button onClick={() => setExpandedTrans(expandedTrans === trans.id ? null : trans.id)} className="w-full p-5 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-black text-xs shrink-0">ID-{trans.id.slice(0, 4).toUpperCase()}</div>
+                  <div>
+                    <p className="font-black text-slate-800 text-sm leading-tight">{trans.guest_name || "Pribadi / Member"}</p>
+                    <p className="text-[11px] text-slate-400 mt-1 font-medium"><Calendar size={12} className="inline mr-1"/> {new Date(trans.transaction_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} • {trans.loans.length} Item</p>
                   </div>
-                  <button 
-                    onClick={() => { setSelectedLoan(loan); setPreviewUrl(null); }}
-                    className="w-full py-3 bg-white border border-blue-500 text-blue-600 font-bold rounded-xl hover:bg-blue-50 active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
-                  >
-                    <Camera size={16} />
-                    Upload Bukti & Kembalikan
-                  </button>
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-200">
-                <CheckCircle size={32} className="text-green-500 mx-auto mb-4" />
-                <h3 className="font-bold text-gray-800">Tidak Ada Tanggungan</h3>
-                <p className="text-gray-500 text-sm mt-1">Terima kasih Kak {profile?.full_name?.split(' ')[0]}!</p>
-              </div>
-            )}
-          </div>
+                {expandedTrans === trans.id ? <ChevronDown size={20} className="text-slate-300"/> : <ChevronRight size={20} className="text-slate-300"/>}
+              </button>
+              <AnimatePresence>{expandedTrans === trans.id && (
+                <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden bg-slate-50/50 border-t border-slate-50">
+                  <div className="p-3 space-y-2">
+                    {trans.loans.map((loan: any) => (
+                      <div key={loan.id} className={`bg-white p-4 rounded-2xl border flex flex-col gap-3 ${loan.status === 'perlu_perbaikan' ? 'border-red-500 bg-red-50/20' : 'border-slate-100'}`}>
+                        <div className="flex items-center gap-4">
+                          <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-slate-50">
+                            <img src={loan.variants?.items?.base_image_url} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-slate-800 text-sm truncate">{loan.variants?.items?.name}</p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">{loan.variants?.size} • {loan.variants?.color}</p>
+                          </div>
+                          {loan.status === 'pending_return' ? (
+                            <div className="px-3 py-1 bg-amber-50 text-amber-600 text-[9px] font-black rounded-full border border-amber-100">VERIFIKASI...</div>
+                          ) : (
+                            <button onClick={() => setSelectedLoan(loan)} className={`w-10 h-10 text-white rounded-xl flex items-center justify-center shadow-lg transition-all ${loan.status === 'perlu_perbaikan' ? 'bg-red-500 animate-bounce' : 'bg-blue-600'}`}>
+                              <Camera size={18}/>
+                            </button>
+                          )}
+                        </div>
+                        {loan.status === 'perlu_perbaikan' && (
+                          <div className="bg-white p-3 rounded-xl border border-red-200 flex items-start gap-2">
+                            <AlertCircle size={14} className="text-red-500 mt-0.5 shrink-0" />
+                            <div><p className="text-[10px] font-black text-red-600 uppercase">Perlu Perbaikan</p><p className="text-xs text-red-700 font-bold mt-1">{loan.reject_reason}</p></div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}</AnimatePresence>
+            </div>
+          ))}
         </div>
       </main>
 
-      {/* --- 2. POPUP UPLOAD BUKTI --- */}
-      <AnimatePresence>
-        {selectedLoan && (
-            <motion.div 
-                className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-                initial="hidden" animate="visible" exit="hidden" variants={backdropVariants}
-            >
-                <motion.div 
-                    className="bg-white w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
-                    variants={modalVariants} 
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white">
-                        <h3 className="font-bold text-gray-800">Bukti Pengembalian</h3>
-                        <button onClick={() => setSelectedLoan(null)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 text-gray-500">
-                            <X size={20} />
-                        </button>
-                    </div>
+      <AnimatePresence>{selectedLoan && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-4 text-left">
+          <div className="absolute inset-0" onClick={() => !isProcessing && setSelectedLoan(null)}></div>
+          <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="bg-white w-full max-w-md rounded-[2rem] overflow-hidden shadow-2xl relative z-10 flex flex-col max-h-[90vh]">
+             <div className="p-5 border-b border-slate-100 flex justify-between items-center"><h3 className="font-black text-slate-800">Bukti Kembali</h3><button onClick={() => setSelectedLoan(null)} className="p-2 bg-slate-50 rounded-full text-slate-400"><X size={20}/></button></div>
+             <div className="p-6 overflow-y-auto">{previewUrl ? (
+                   <div className="space-y-4">
+                      <div className="bg-blue-50 p-3 rounded-xl flex items-start gap-2 border border-blue-100"><MousePointer2 size={16} className="text-blue-600 mt-0.5" /><p className="text-[11px] text-blue-700 font-medium">Klik pada foto untuk menandai lokasi barang.</p></div>
+                      <div ref={imageContainerRef} onClick={handleImageClick} className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 aspect-square flex items-center justify-center cursor-crosshair"><img src={previewUrl} className="max-w-full max-h-full object-contain" /><div className="absolute transform -translate-x-1/2 -translate-y-full pointer-events-none" style={{ left: `${arrowPos.x}%`, top: `${arrowPos.y}%` }}><svg width="50" height="50" viewBox="0 0 24 24" fill="red" stroke="white" strokeWidth="2"><path d="M12 19V5" /><path d="M5 12l7 7 7-7" /></svg></div></div>
+                      <button onClick={handleConfirmReturn} disabled={isProcessing} className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl active:scale-95 transition-all">{isProcessing ? <Loader2 className="animate-spin mx-auto"/> : "Konfirmasi & Kirim"}</button>
+                   </div>
+                ) : (
+                  <div className="text-center space-y-6"><div><h4 className="text-lg font-black text-slate-900 leading-tight">{selectedLoan.variants?.items?.name}</h4><p className="text-xs font-bold text-blue-600 mt-1 uppercase">{selectedLoan.variants?.size} • {selectedLoan.variants?.color}</p></div>
+                      <label className="flex flex-col items-center justify-center w-full h-56 border-2 border-dashed border-slate-200 rounded-3xl cursor-pointer bg-slate-50 hover:bg-blue-50 transition-all group"><div className="flex flex-col items-center justify-center p-5"><Camera className="text-slate-300 group-hover:text-blue-500 mb-3" size={40} /><p className="text-sm text-slate-500 font-bold">Ambil Foto Bukti</p></div><input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} /></label>
+                  </div>
+                )}</div>
+          </motion.div>
+        </div>
+      )}</AnimatePresence>
 
-                    <div className="p-6 overflow-y-auto">
-                        {previewUrl ? (
-                            <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg mb-4 flex items-start gap-2">
-                                <MousePointer2 className="text-blue-600 mt-0.5" size={16} />
-                                <p className="text-xs text-blue-800 leading-relaxed">
-                                    <strong>Geser / Klik pada foto</strong> untuk meletakkan panah merah tepat di posisi barang.
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="text-center mb-6">
-                                <p className="text-gray-500 text-sm mb-1">Barang dikembalikan:</p>
-                                <p className="font-bold text-gray-900">{selectedLoan?.variants?.items?.name}</p>
-                            </div>
-                        )}
-
-                        <div className="mb-6 relative">
-                            {previewUrl ? (
-                                <div 
-                                    ref={imageContainerRef}
-                                    onClick={handleImageClick}
-                                    onTouchMove={handleImageClick} 
-                                    className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-900 cursor-crosshair touch-none"
-                                >
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={previewUrl} alt="Bukti" className="w-full object-contain" />
-                                    <div 
-                                        className="absolute transform -translate-x-1/2 -translate-y-full pointer-events-none transition-all duration-75"
-                                        style={{ left: `${arrowPos.x}%`, top: `${arrowPos.y}%`, filter: 'drop-shadow(0px 2px 4px rgba(0,0,0,0.5))' }}
-                                    >
-                                        <svg width="60" height="60" viewBox="0 0 24 24" fill="red" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M12 19V5" /><path d="M5 12l7 7 7-7" />
-                                        </svg>
-                                        <div className="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 text-center shadow-sm">Lokasi</div>
-                                    </div>
-                                    <button onClick={(e) => { e.stopPropagation(); setPreviewUrl(null); }} className="absolute top-2 right-2 p-2 bg-black/50 hover:bg-red-500 text-white rounded-full backdrop-blur-md transition">
-                                        <X size={16} />
-                                    </button>
-                                </div>
-                            ) : (
-                                <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-gray-50 hover:bg-blue-50 hover:border-blue-400 transition group">
-                                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                        {isProcessing ? <Loader2 className="animate-spin text-blue-500 mb-2" size={32} /> : <Camera className="text-gray-400 group-hover:text-blue-500 mb-2" size={32} />}
-                                        <p className="mb-2 text-sm text-gray-500 group-hover:text-blue-600 font-bold">{isProcessing ? "Memproses..." : "Ambil Foto"}</p>
-                                        <p className="text-xs text-gray-400">Bukti barang diletakkan kembali</p>
-                                    </div>
-                                    <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={isProcessing} />
-                                </label>
-                            )}
-                        </div>
-
-                        <button 
-                            onClick={handleConfirmReturn}
-                            disabled={!previewUrl || isProcessing}
-                            className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${previewUrl && !isProcessing ? 'bg-green-600 text-white shadow-green-600/20 active:scale-95' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                        >
-                            {isProcessing ? <Loader2 className="animate-spin" /> : <CheckCircle size={20} />}
-                            {isProcessing ? "Menyimpan Data..." : "Konfirmasi Posisi & Selesai"}
-                        </button>
-                    </div>
-                </motion.div>
-            </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* --- 3. POPUP SUKSES --- */}
-      <AnimatePresence>
-        {showSuccess && (
-            <motion.div 
-                className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-                initial="hidden" animate="visible" exit="hidden" variants={backdropVariants}
-            >
-                <motion.div 
-                    className="bg-white rounded-3xl p-8 shadow-2xl max-w-sm w-full text-center space-y-4 border border-white/20"
-                    variants={modalVariants} 
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-2 animate-bounce">
-                        <CheckCircle size={40} strokeWidth={3} />
-                    </div>
-                    <div>
-                        <h2 className="text-2xl font-bold text-gray-900 mb-1">Berhasil!</h2>
-                        <p className="text-gray-500">Barang sudah tercatat kembali dan bukti foto sudah disimpan.</p>
-                    </div>
-                    <div className="pt-4">
-                        <button 
-                            onClick={() => setShowSuccess(false)}
-                            className="w-full py-3 bg-gray-900 text-white font-bold rounded-xl hover:bg-black transition shadow-lg active:scale-95"
-                        >
-                            Oke, Mantap
-                        </button>
-                    </div>
-                </motion.div>
-            </motion.div>
-        )}
-      </AnimatePresence>
-
+      <AnimatePresence>{showSuccess && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-[2.5rem] p-8 shadow-2xl max-w-sm w-full text-center space-y-4">
+            <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-2 animate-bounce"><CheckCircle size={40} strokeWidth={3} /></div>
+            <h2 className="text-2xl font-black text-slate-900">Terkirim!</h2><p className="text-slate-500 text-sm font-medium">Laporan sudah masuk. Tunggu verifikasi admin.</p>
+            <button onClick={() => {setShowSuccess(false); fetchData();}} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl shadow-xl active:scale-95 transition-all">Oke, Mengerti</button>
+          </motion.div>
+        </div>
+      )}</AnimatePresence>
     </div>
   );
 }

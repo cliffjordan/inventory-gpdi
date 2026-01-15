@@ -60,7 +60,7 @@ export default function LandingPage() {
 
       {/* FOOTER */}
       <footer className="py-6 text-center text-gray-400 text-sm">
-        &copy; 2024 Creative Ministry GPdI Resinda
+        &copy; 2026 Creative Ministry GPdI Resinda
       </footer>
 
     </div>
