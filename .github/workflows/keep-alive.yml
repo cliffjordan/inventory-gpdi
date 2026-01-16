@@ -11,6 +11,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Supabase Project
-        # Ganti URL di bawah dengan URL Project Supabase Anda
-        # Contoh: https://abcdefghijklm.supabase.co
-        run: curl -I https://https://shbxnmjarrbbeuoccigl.supabase.co/rest/v1/
+        # URL sudah diperbaiki (hanya satu https://)
+        run: curl -I https://shbxnmjarrbbeuoccigl.supabase.co/rest/v1/
