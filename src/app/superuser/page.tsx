@@ -65,17 +65,25 @@ export default function SuperuserPage() {
   const [isScanningUsers, setIsScanningUsers] = useState(false);
 
   // --- STATE MODALS (NEW FEATURES - INTELLIGENCE) ---
+  // 1. Dynamic Protocol
   const [showFormBuilderModal, setShowFormBuilderModal] = useState(false);
   const [formFields, setFormFields] = useState<any[]>([]);
   const [newField, setNewField] = useState({ label: '', type: 'text', required: false });
+
+  // 2. Internal Ticketing
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [tickets, setTickets] = useState<any[]>([]);
+  
+  // 3. Deep Health Check
   const [showHealthModal, setShowHealthModal] = useState(false);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
   const [healthStats, setHealthStats] = useState<any>(null);
+
+  // 4. Data Time Machine
   const [showTimeMachineModal, setShowTimeMachineModal] = useState(false);
   const [itemHistory, setItemHistory] = useState<any[]>([]);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<any>(null);
+
 
   // --- INITIAL CHECK ---
   useEffect(() => {
@@ -105,6 +113,7 @@ export default function SuperuserPage() {
     setSystemStatus(data?.value === 'true');
   };
 
+  // --- CORE FUNCTIONS ---
   const handleLogout = async () => {
     const toastId = toast.loading("Logging out...");
     await supabase.auth.signOut();
@@ -116,17 +125,17 @@ export default function SuperuserPage() {
     await supabase.from('audit_logs').insert({ admin_name: 'The Architect', action, details });
   };
 
-  // --- LOGIC DATABASE: APPROVALS (FIXED TYPESCRIPT ERROR HERE) ---
   const fetchApprovals = async () => {
     try {
-        const combinedData = [];
+        // --- [FIX 1] Menambahkan tipe array any[] agar tidak error ---
+        const combinedData: any[] = []; 
+        
         const { data: migrations } = await supabase.from('migration_requests').select(`*, requested_by_profile:requested_by(full_name, no_induk)`).eq('status', 'pending');
         if (migrations) {
             migrations.forEach(m => combinedData.push({ 
                 id: m.id, 
                 table: 'migration_requests', 
                 type: 'MIGRATION', 
-                // Fix: Added 'as any' to prevent build error
                 user: (m.requested_by_profile as any)?.full_name || 'Unknown', 
                 request: 'Migrasi Akun (Merge)', 
                 details: `Source: ${m.source_id.slice(0,8)}... -> Target: ${m.target_id.slice(0,8)}...`, 
@@ -141,7 +150,6 @@ export default function SuperuserPage() {
                 id: a.id, 
                 table: 'attendance_change_requests', 
                 type: 'ATTENDANCE', 
-                // Fix: Added 'as any' to prevent build error
                 user: (a.requested_by_profile as any)?.full_name || 'Unknown', 
                 request: `Ubah Absensi: ${a.old_status} -> ${a.new_status}`, 
                 details: `Alasan: ${a.reason}`, 
@@ -204,7 +212,16 @@ export default function SuperuserPage() {
   const scanStorage = async () => { setIsScanningStorage(true); try { const { data: itemFiles } = await supabase.storage.from('items').list(); const { data: dbItems } = await supabase.from('items').select('base_image_url'); const dbUrls = dbItems?.map(i => i.base_image_url) || []; const trash = itemFiles?.filter(file => { const isUsed = dbUrls.some(url => url && url.includes(file.name)); return !isUsed && file.name !== '.emptyFolderPlaceholder'; }) || []; const result = trash.map((f, i) => ({ id: i, name: f.name, size: (f.metadata?.size / 1024).toFixed(2) + ' KB', path: f.name })); setJanitorScanResult(result); if(result.length === 0) toast.success("Storage Clean & Healthy!"); } catch (e) { console.error(e); toast.error("Scan Failed"); } finally { setIsScanningStorage(false); } };
   const deleteSelectedFiles = async () => { const toastId = toast.loading(`Deleting ${selectedTrashFiles.length} files...`); try { await supabase.storage.from('items').remove(selectedTrashFiles); setJanitorScanResult(prev => prev.filter(f => !selectedTrashFiles.includes(f.path))); setSelectedTrashFiles([]); await logAction("Storage Janitor", `Deleted ${selectedTrashFiles.length} orphaned files`); toast.success("Cleanup Complete!", { id: toastId }); } catch (e) { toast.error("Delete Failed", { id: toastId }); } };
 
-  const scanGhostLoans = async () => { setShowGhostLoanModal(true); try { const oneYearAgo = new Date(); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1); const { data } = await supabase.from('loans').select(`id, borrow_date, status, variants(items(name)), profiles(full_name)`).eq('status', 'dipinjam').lt('borrow_date', oneYearAgo.toISOString()); const ghosts = data?.map(l => ({ id: l.id, item: l.variants?.items?.name || "Unknown Item", borrower: l.profiles?.full_name || "Unknown User", issue: "Stuck > 1 Year" })) || []; setGhostLoans(ghosts); if(ghosts.length === 0) toast.success("No Ghost Loans Found."); } catch (e) { console.error(e); } };
+  // --- [FIX 2] GHOST LOAN ERROR FIX (Added 'as any') ---
+  const scanGhostLoans = async () => { setShowGhostLoanModal(true); try { const oneYearAgo = new Date(); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1); const { data } = await supabase.from('loans').select(`id, borrow_date, status, variants(items(name)), profiles(full_name)`).eq('status', 'dipinjam').lt('borrow_date', oneYearAgo.toISOString()); 
+  const ghosts = data?.map(l => ({ 
+      id: l.id, 
+      item: (l.variants as any)?.items?.name || "Unknown Item", 
+      borrower: (l.profiles as any)?.full_name || "Unknown User", 
+      issue: "Stuck > 1 Year" 
+  })) || []; 
+  setGhostLoans(ghosts); if(ghosts.length === 0) toast.success("No Ghost Loans Found."); } catch (e) { console.error(e); } };
+  
   const resolveGhostLoans = async () => { const toastId = toast.loading("Resolving..."); try { await supabase.from('loans').update({ status: 'hilang', return_condition: 'Dianggap Hilang (System Purge)' }).in('id', selectedGhostLoans); setGhostLoans(prev => prev.filter(l => !selectedGhostLoans.includes(l.id))); setSelectedGhostLoans([]); await logAction("Ghost Loan", `Resolved ${selectedGhostLoans.length} stuck loans`); toast.success("Loans Resolved", { id: toastId }); } catch(e) { toast.error("Failed", { id: toastId }); } };
 
   const scanInactiveUsers = async () => { setIsScanningUsers(true); try { const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6); const dateStr = sixMonthsAgo.toISOString(); const { data: activeAtt } = await supabase.from('attendance').select('user_id').gte('date', dateStr); const { data: activeTx } = await supabase.from('transactions').select('user_id').gte('transaction_date', dateStr); const activeIds = new Set([ ...(activeAtt?.map(a => a.user_id) || []), ...(activeTx?.map(t => t.user_id) || []) ]); const { data: allProfiles } = await supabase.from('profiles').select('id, full_name, created_at').eq('role', 'member'); const ghosts = allProfiles?.filter(p => !activeIds.has(p.id)).map(p => ({ id: p.id, name: p.full_name, lastSeen: `Joined: ${new Date(p.created_at).toLocaleDateString()}` })) || []; setInactiveUsers(ghosts); } catch(e) { console.error(e); } finally { setIsScanningUsers(false); } };
