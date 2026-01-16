@@ -35,7 +35,6 @@ export default function LoginPage() {
 
     try {
       // 1. CEK STATUS LOCKDOWN ( MAINTENANCE )
-      // Logic: Jika maintenance aktif, hanya Superuser (Special ID) yang boleh lanjut.
       if (!isSpecialID) {
         const { data: setting } = await supabase
             .from('system_settings')
@@ -77,7 +76,7 @@ export default function LoginPage() {
                 style: { background: '#0f172a', color: '#fff' } 
             });
         } else {
-            toast.dismiss();
+            toast.dismiss(); // Bersihkan toast sebelumnya
         }
         setStep('pin');
       } else {
@@ -115,7 +114,8 @@ export default function LoginPage() {
 
   const executeLogin = async () => {
     setLoading(true);
-    const toastId = toast.loading(isSuperUserMode ? "Accessing Mainframe..." : "Memverifikasi PIN...");
+    // Gunakan ID agar toast tidak menumpuk
+    const toastId = toast.loading(isSuperUserMode ? "Accessing Mainframe..." : "Memverifikasi PIN...", { id: 'login-process' });
 
     try {
       let formattedPhone = phone.replace(/\D/g, '');
@@ -129,14 +129,18 @@ export default function LoginPage() {
 
       if (error) throw error;
 
+      // Sukses
       toast.success(isSuperUserMode ? "Access Granted." : "Login Berhasil!", { id: toastId });
       
-      // Routing: Superuser ke Panel, Member ke Dashboard
+      // Routing & Refresh Cache (Fix Notif Nyangkut)
       if (isSuperUserMode) {
           router.replace('/superuser');
       } else {
           router.replace('/dashboard');
       }
+      
+      // PENTING: Paksa refresh agar state auth di dashboard diperbarui
+      router.refresh(); 
 
     } catch (error: any) {
       console.error(error);
