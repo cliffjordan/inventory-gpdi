@@ -154,15 +154,34 @@ export default function DashboardPage() {
     }
   };
 
-  const executeLogout = async (action: 'clear' | 'keep') => {
-    if (action === 'clear') {
-      clearCart();
-      toast.success("Keranjang dibersihkan.");
-    } else {
-      toast.success("Barang disimpan di keranjang Anda.");
+const executeLogout = async (action: 'clear' | 'keep') => {
+    const toastId = toast.loading("Sedang memproses...", { id: 'logout-process' });
+
+    try {
+        // 1. Handle Keranjang
+        if (action === 'clear') {
+            clearCart(); 
+            // Tidak perlu toast terpisah, gabung di akhir agar rapi
+        }
+
+        // 2. Proses Logout Supabase
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
+
+        // 3. Feedback Akhir
+        if (action === 'clear') {
+            toast.success("Keranjang dibersihkan & Logout berhasil", { id: toastId });
+        } else {
+            toast.success("Logout berhasil (Barang disimpan)", { id: toastId });
+        }
+
+        // 4. Redirect DAN Refresh (PENTING)
+        router.replace('/login');
+        router.refresh(); // Hapus cache halaman dashboard agar tidak bisa di-back
+
+    } catch (err: any) {
+        toast.error("Gagal logout: " + err.message, { id: toastId });
     }
-    await supabase.auth.signOut();
-    router.replace('/login');
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files && e.target.files[0]) { const file = e.target.files[0]; const reader = new FileReader(); reader.onload = () => { setCropImageSrc(reader.result as string); setShowCropModal(true); setZoom(1); setPan({ x: 0, y: 0 }); }; reader.readAsDataURL(file); } };

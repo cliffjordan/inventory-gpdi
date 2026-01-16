@@ -1,0 +1,16 @@
+name: Supabase Keep Alive
+
+on:
+  schedule:
+    # Jalan setiap hari jam 00:00 UTC (07:00 WIB)
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Tombol manual untuk test ping
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Project
+        # Ganti URL di bawah dengan URL Project Supabase Anda
+        # Contoh: https://abcdefghijklm.supabase.co
+        run: curl -I https://https://shbxnmjarrbbeuoccigl.supabase.co/rest/v1/
