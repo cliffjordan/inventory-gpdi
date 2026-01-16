@@ -18,6 +18,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [isSuperUserMode, setIsSuperUserMode] = useState(false); // Mode UI Superuser
 
+  // --- [FIX] CLEANUP TOAST ---
+  // Kode ini akan otomatis menghapus semua notifikasi saat halaman Login ditutup/pindah
+  useEffect(() => {
+    return () => {
+      toast.dismiss(); 
+    };
+  }, []);
+
   // --- LOGIC STEP 1: CEK NO HP & LOCKDOWN ---
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
