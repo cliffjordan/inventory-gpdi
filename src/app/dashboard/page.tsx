@@ -96,7 +96,6 @@ export default function DashboardPage() {
             const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
             const late = loansData.filter(l => l.status === 'dipinjam' && new Date(l.borrow_date) < sevenDaysAgo).length;
   
-            // --- [FIX] Added (l.profiles as any) to fix TypeScript error ---
             const myData = loansData.filter(l => (l.profiles as any)?.no_induk === profileData?.no_induk);
             
             const myActive = myData.filter(l => l.status === 'dipinjam').length;
@@ -117,9 +116,7 @@ export default function DashboardPage() {
 
   const getModalListData = () => {
     if (!statModalType) return [];
-    // --- [FIX] Added (l.profiles as any) here as well just in case ---
     let data = profile?.role === 'admin' ? allLoans : allLoans.filter(l => (l.profiles as any)?.no_induk === profile?.no_induk);
-    
     const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     switch (statModalType) {
       case 'active': return data.filter(l => l.status === 'dipinjam');
@@ -154,31 +151,15 @@ export default function DashboardPage() {
     }
   };
 
-const executeLogout = async (action: 'clear' | 'keep') => {
+  const executeLogout = async (action: 'clear' | 'keep') => {
     const toastId = toast.loading("Sedang memproses...", { id: 'logout-process' });
-
     try {
-        // 1. Handle Keranjang
-        if (action === 'clear') {
-            clearCart(); 
-            // Tidak perlu toast terpisah, gabung di akhir agar rapi
-        }
-
-        // 2. Proses Logout Supabase
+        if (action === 'clear') clearCart(); 
         const { error } = await supabase.auth.signOut();
         if (error) throw error;
-
-        // 3. Feedback Akhir
-        if (action === 'clear') {
-            toast.success("Keranjang dibersihkan & Logout berhasil", { id: toastId });
-        } else {
-            toast.success("Logout berhasil (Barang disimpan)", { id: toastId });
-        }
-
-        // 4. Redirect DAN Refresh (PENTING)
+        toast.success("Logout berhasil", { id: toastId });
         router.replace('/login');
-        router.refresh(); // Hapus cache halaman dashboard agar tidak bisa di-back
-
+        router.refresh(); 
     } catch (err: any) {
         toast.error("Gagal logout: " + err.message, { id: toastId });
     }
@@ -197,7 +178,8 @@ const executeLogout = async (action: 'clear' | 'keep') => {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin" size={40} /></div>;
 
   return (
-    <div className="min-h-screen pb-24 font-sans text-slate-800 bg-slate-50">
+    // [FIX] AUTOMATIC PADDING & HEIGHT FOR MOBILE
+    <div className="min-h-[100dvh] pb-[calc(8rem+env(safe-area-inset-bottom))] font-sans text-slate-800 bg-slate-50 overflow-x-hidden">
       
       {/* HEADER */}
       <header className="bg-white/80 backdrop-blur-md px-6 py-6 border-b border-slate-100 sticky top-0 z-30 shadow-sm">
@@ -318,7 +300,7 @@ const executeLogout = async (action: 'clear' | 'keep') => {
         </div>
       </div>
 
-      {/* --- SIDE MENU (UPDATED) --- */}
+      {/* --- SIDE MENU --- */}
       <AnimatePresence>
         {isSideMenuOpen && (
           <>
@@ -343,7 +325,7 @@ const executeLogout = async (action: 'clear' | 'keep') => {
         )}
       </AnimatePresence>
 
-      {/* --- MODAL LOGOUT BIASA --- */}
+      {/* --- MODALS LOGOUT & CART WARNING --- */}
       <AnimatePresence>
         {isLogoutConfirmOpen && (
           <motion.div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm" initial="hidden" animate="visible" exit="hidden" variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}>
@@ -359,7 +341,6 @@ const executeLogout = async (action: 'clear' | 'keep') => {
         )}
       </AnimatePresence>
 
-      {/* --- MODAL WARNING CART --- */}
       <AnimatePresence>
         {isCartWarningOpen && (
           <motion.div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm" initial="hidden" animate="visible" exit="hidden" variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}>
@@ -388,6 +369,9 @@ const executeLogout = async (action: 'clear' | 'keep') => {
       <AnimatePresence>{showProfileModal && (<div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm"><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden shadow-2xl p-6 relative"><button onClick={() => setShowProfileModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-900"><X size={20}/></button><h2 className="text-xl font-black text-slate-900 mb-6 text-center">Edit Profil</h2><div className="flex flex-col items-center space-y-4"><div className="relative group"><div className="w-28 h-28 bg-blue-600 rounded-[2.5rem] flex items-center justify-center text-white shadow-xl shadow-blue-500/20 overflow-hidden border-4 border-white">{previewAvatar || profile?.avatar_url ? (<img src={previewAvatar || profile?.avatar_url} className="w-full h-full object-cover" />) : (<div className="w-full h-full flex items-center justify-center text-slate-400"><User size={48} strokeWidth={1.5}/></div>)}</div><label className="absolute -bottom-1 -right-1 bg-slate-900 text-white p-2.5 rounded-xl cursor-pointer shadow-lg hover:scale-110 transition-transform active:scale-95"><Camera size={16} /><input type="file" className="hidden" accept="image/*" onChange={handleFileSelect} /></label></div><div className="w-full space-y-1"><label className="text-xs font-bold text-slate-400 uppercase ml-1">Nama Lengkap</label><input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 outline-none focus:border-blue-500" /></div><div className="w-full space-y-1"><label className="text-xs font-bold text-slate-400 uppercase ml-1 flex items-center gap-1"><Phone size={12}/> WhatsApp</label><input type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value.replace(/\D/g,''))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 outline-none focus:border-blue-500" placeholder="08..." /></div><button onClick={handleUpdateProfile} disabled={isUpdatingProfile} className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-500/30 flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:bg-slate-300">{isUpdatingProfile ? <Loader2 className="animate-spin" /> : <Save size={20} />} Simpan Profil</button></div></motion.div></div>)}</AnimatePresence>
       <AnimatePresence>{showPasswordModal && (<div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm"><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden shadow-2xl p-6 relative"><button onClick={() => setShowPasswordModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-900"><X size={20}/></button><h2 className="text-xl font-black text-slate-900 mb-6 text-center">Ganti Password</h2><div className="space-y-4"><div className="space-y-1 relative"><label className="text-xs font-bold text-slate-400 uppercase ml-1">Password Baru</label><input type={showPass ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 outline-none focus:border-amber-500" /><button onClick={() => setShowPass(!showPass)} className="absolute right-3 top-8 text-slate-400 hover:text-slate-600">{showPass ? <EyeOff size={18}/> : <Eye size={18}/>}</button></div><div className="space-y-1"><label className="text-xs font-bold text-slate-400 uppercase ml-1">Konfirmasi Password</label><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 outline-none focus:border-amber-500" /></div><button onClick={handleChangePassword} disabled={isUpdatingPass} className="w-full py-4 bg-amber-500 text-white font-black rounded-2xl shadow-xl shadow-amber-500/30 flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:bg-slate-300">{isUpdatingPass ? <Loader2 className="animate-spin" /> : <Lock size={20} />} Update Password</button></div></motion.div></div>)}</AnimatePresence>
       <AnimatePresence>{showCropModal && cropImageSrc && (<div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md"><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col relative"><div className="relative w-full aspect-square bg-slate-900 overflow-hidden cursor-move touch-none" ref={containerRef} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp}><img ref={imageRef} src={cropImageSrc} className="absolute origin-center select-none" style={{ width: '100%', height: 'auto', top: '50%', left: '50%', transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} draggable={false}/></div><div className="p-6 space-y-4 bg-white"><div className="flex items-center gap-3"><ZoomIn size={18} className="text-slate-400"/><input type="range" min="1" max="3" step="0.1" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-full accent-blue-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"/></div><div className="grid grid-cols-2 gap-3"><button onClick={() => setShowCropModal(false)} className="py-3 bg-slate-100 text-slate-500 font-bold rounded-2xl">Batal</button><button onClick={getCroppedImg} className="py-3 bg-blue-600 text-white font-bold rounded-2xl">Gunakan</button></div></div></motion.div></div>)}</AnimatePresence>
+      {/* ... (Modal Logout dan lainnya sudah dihandle di atas) ... */}
+      
+      {/* Modal Aksi Cepat & Kehadiran & Detail Loan (Paste juga di sini jika belum ada, sesuai file asli) */}
       <AnimatePresence>{showScanOption && (<div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"><motion.div initial={{scale: 0.9, opacity: 0}} animate={{scale: 1, opacity: 1}} exit={{scale: 0.9, opacity: 0}} className="bg-white w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl relative"><button onClick={() => setShowScanOption(false)} className="absolute top-5 right-5 text-slate-300 hover:text-slate-500"><XCircle size={24}/></button><h3 className="text-xl font-black text-slate-900 text-center mb-6">Menu Transaksi</h3><div className="space-y-3"><Link href="/items" className="block group"><div className="p-4 rounded-2xl bg-blue-50 border border-blue-100 flex items-center gap-4 hover:bg-blue-100 transition-colors"><div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white"><ArrowUpRight size={20}/></div><div><h4 className="font-bold text-slate-800">Meminjam</h4><p className="text-xs text-slate-500">Barang Keluar</p></div></div></Link><Link href="/return" className="block group"><div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center gap-4 hover:bg-emerald-100 transition-colors"><div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white"><ArrowDownLeft size={20}/></div><div><h4 className="font-bold text-slate-800">Mengembalikan</h4><p className="text-xs text-slate-500">Barang Masuk</p></div></div></Link><Link href="/history" className="block group"><div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center gap-4 hover:bg-indigo-100 transition-colors"><div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white"><History size={20}/></div><div><h4 className="font-bold text-slate-800">Riwayat Transaksi</h4><p className="text-xs text-slate-500">Log Peminjaman</p></div></div></Link></div></motion.div></div>)}</AnimatePresence>
       <AnimatePresence>{showAttendanceOption && (<div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"><motion.div initial={{scale: 0.9, opacity: 0}} animate={{scale: 1, opacity: 1}} exit={{scale: 0.9, opacity: 0}} className="bg-white w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl relative"><button onClick={() => setShowAttendanceOption(false)} className="absolute top-5 right-5 text-slate-300 hover:text-slate-500"><XCircle size={24}/></button><h3 className="text-xl font-black text-slate-900 text-center mb-6">Menu Kehadiran</h3><div className="space-y-3">{profile?.role === 'admin' && (<Link href="/attendance" className="block group"><div className="p-4 rounded-2xl bg-violet-50 border border-violet-100 flex items-center gap-4 hover:bg-violet-100 transition-colors"><div className="w-10 h-10 bg-violet-600 rounded-xl flex items-center justify-center text-white"><CalendarCheck size={20}/></div><div><h4 className="font-bold text-slate-800">Input Kehadiran</h4><p className="text-xs text-slate-500">Catat Absensi Baru</p></div></div></Link>)}<Link href="/attendance/history" className="block group"><div className="p-4 rounded-2xl bg-fuchsia-50 border border-fuchsia-100 flex items-center gap-4 hover:bg-fuchsia-100 transition-colors"><div className="w-10 h-10 bg-fuchsia-600 rounded-xl flex items-center justify-center text-white"><ListChecks size={20}/></div><div><h4 className="font-bold text-slate-800">Riwayat Kehadiran</h4><p className="text-xs text-slate-500">Log Absensi</p></div></div></Link></div></motion.div></div>)}</AnimatePresence>
       <AnimatePresence>{statModalType && (<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"><div className="absolute inset-0" onClick={() => setStatModalType(null)}></div><motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden shadow-2xl relative z-10 flex flex-col max-h-[85vh]"><div className="p-6 border-b border-slate-100 bg-white flex justify-between items-center sticky top-0 z-20"><div><h2 className="text-lg font-black text-slate-900">{getModalTitle()}</h2><p className="text-xs text-slate-400 font-medium">Daftar item dalam kategori ini</p></div><button onClick={() => setStatModalType(null)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100 text-slate-400"><X size={20}/></button></div><div className="flex-1 overflow-y-auto p-2">{getModalListData().length > 0 ? (<div className="space-y-1">{getModalListData().map((loan: any) => (<button key={loan.id} onClick={() => setSelectedLoan(loan)} className="w-full p-4 flex items-center gap-4 bg-white hover:bg-blue-50 transition-colors rounded-2xl group border border-transparent hover:border-blue-100 text-left"><div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-white group-hover:text-blue-600 shadow-sm shrink-0 overflow-hidden">{loan.variants?.items?.base_image_url ? <img src={loan.variants.items.base_image_url} className="w-full h-full object-cover"/> : <Box size={20}/>}</div><div className="flex-1 min-w-0"><h4 className="font-bold text-slate-800 text-sm truncate">{loan.variants?.items?.name}</h4><p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">{loan.variants?.size} • {loan.variants?.color}</p></div><ChevronRight size={16} className="text-slate-300 group-hover:text-blue-500" /></button>))}</div>) : (<div className="text-center py-10"><Package size={24} className="mx-auto mb-3 text-slate-200"/><p className="text-xs font-bold text-slate-400">Tidak ada data.</p></div>)}</div></motion.div></div>)}</AnimatePresence>
