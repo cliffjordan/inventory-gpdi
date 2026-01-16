@@ -114,6 +114,7 @@ export default function DashboardPage() {
       fetchData();
   }, [router]);
 
+  // (Helper Functions sama seperti sebelumnya)
   const getModalListData = () => {
     if (!statModalType) return [];
     let data = profile?.role === 'admin' ? allLoans : allLoans.filter(l => (l.profiles as any)?.no_induk === profile?.no_induk);
@@ -165,6 +166,7 @@ export default function DashboardPage() {
     }
   };
 
+  // (Profile & Image Handlers sama)
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files && e.target.files[0]) { const file = e.target.files[0]; const reader = new FileReader(); reader.onload = () => { setCropImageSrc(reader.result as string); setShowCropModal(true); setZoom(1); setPan({ x: 0, y: 0 }); }; reader.readAsDataURL(file); } };
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => { e.preventDefault(); setIsDragging(true); const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX; const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY; setDragStart({ x: clientX - pan.x, y: clientY - pan.y }); };
   const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => { if (!isDragging) return; const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX; const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY; setPan({ x: clientX - dragStart.x, y: clientY - dragStart.y }); };
@@ -178,11 +180,15 @@ export default function DashboardPage() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin" size={40} /></div>;
 
   return (
-    // [FIX] EXTRA LARGE PADDING BOTTOM (pb-48) to clear floating elements
-    <div className="min-h-[100dvh] pb-48 font-sans text-slate-800 bg-slate-50 overflow-x-hidden">
+    // [FIX] Layout Flexible (Standard Web Style)
+    // - min-h-screen: Minimal tinggi 1 layar penuh
+    // - h-auto: Bisa memanjang tak terbatas mengikuti konten
+    // - pb-40: Padding bawah super besar agar widget "Halo Admin" tidak tertutup
+    // - overflow-x-hidden: Mencegah geser kanan-kiri di HP
+    <div className="w-full min-h-screen h-auto bg-slate-50 font-sans text-slate-800 pb-40 relative overflow-x-hidden">
       
-      {/* HEADER */}
-      <header className="bg-white/80 backdrop-blur-md px-6 py-6 border-b border-slate-100 sticky top-0 z-30 shadow-sm">
+      {/* HEADER (Sticky Top) */}
+      <header className="bg-white/80 backdrop-blur-md px-6 py-6 border-b border-slate-100 sticky top-0 z-40 shadow-sm">
         <div className="flex justify-between items-center mb-5">
            <div>
              <p className="text-slate-400 text-xs font-bold tracking-widest uppercase mb-1">Creative Ministry</p>
@@ -211,19 +217,21 @@ export default function DashboardPage() {
                         <h4 className="text-[10px] font-bold uppercase text-blue-100 tracking-widest mb-1">PENGUMUMAN</h4>
                         <p className="text-sm font-medium leading-relaxed">{announcement}</p>
                     </div>
-                    {/* [FIX] Close Button: High Z-Index, Bigger Hit Area */}
+                    {/* [FIX] Close Button: Z-Index 50 agar bisa diklik */}
                     <button onClick={() => setAnnouncement(null)} className="absolute top-0 right-0 p-4 text-blue-200 hover:text-white z-50 transition">
                         <X size={18}/>
                     </button>
-                    {/* [FIX] Decoration: pointer-events-none to click-through */}
                     <Megaphone size={80} className="absolute -bottom-4 -right-4 text-white opacity-10 -rotate-12 pointer-events-none z-0"/>
                 </div>
             </motion.div>
         )}
       </AnimatePresence>
 
-      {/* DASHBOARD CONTENT */}
-      <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
+      {/* DASHBOARD CONTENT GRID */}
+      {/* Gunakan h-auto agar Grid tidak membatasi tinggi konten */}
+      <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-8 h-auto relative z-0">
+        
+        {/* KOLOM KIRI (Main Content) */}
         <div className="lg:col-span-2 space-y-4">
             <div className="flex justify-between items-end px-1">
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">{currentSlide === 0 ? "Aksi Cepat" : "Ringkasan Data"}</h3>
@@ -232,7 +240,9 @@ export default function DashboardPage() {
                     <button onClick={() => setCurrentSlide(1)} className={`w-2 h-2 rounded-full transition-all ${currentSlide === 1 ? 'bg-blue-600 w-4' : 'bg-slate-300'}`}/>
                 </div>
             </div>
-            <div className="overflow-hidden relative min-h-[320px]">
+            
+            {/* SLIDER CONTAINER */}
+            <div className="overflow-hidden relative min-h-[340px]">
                 <motion.div animate={{ x: currentSlide === 0 ? 0 : "-100%" }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="flex w-full absolute top-0 left-0 h-full">
                     {/* SLIDE 1 */}
                     <div className="w-full shrink-0 pr-4"> 
@@ -272,6 +282,7 @@ export default function DashboardPage() {
                     </div>
                 </motion.div>
             </div>
+
             {/* RECENT LOANS (MEMBER) */}
             {profile?.role !== 'admin' && (
             <section className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm">
@@ -292,7 +303,9 @@ export default function DashboardPage() {
             </section>
             )}
         </div>
-        {/* SIDEBAR WIDGET */}
+
+        {/* KOLOM KANAN (Sidebar Widget) */}
+        {/* Widget ini akan stacking ke bawah di mobile */}
         <div className="space-y-6">
             <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2rem] p-6 text-white shadow-xl shadow-blue-200 relative overflow-hidden">
                 <div className="relative z-10"><h3 className="font-bold text-lg mb-1">{profile?.role === 'admin' ? 'Halo Admin!' : 'Butuh Bantuan?'}</h3><p className="text-blue-100 text-xs mb-4">{profile?.role === 'admin' ? 'Semua sistem berjalan normal.' : 'Hubungi admin jika ada kendala.'}</p>{profile?.role !== 'admin' && (<button className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-xl text-xs font-bold hover:bg-white/30 transition">Kontak Admin</button>)}</div><Package size={120} className="absolute -bottom-6 -right-6 opacity-10 rotate-12"/>
