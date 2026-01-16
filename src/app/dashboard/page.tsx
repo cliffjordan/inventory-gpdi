@@ -178,8 +178,8 @@ export default function DashboardPage() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin" size={40} /></div>;
 
   return (
-    // [FIX] AUTOMATIC PADDING & HEIGHT FOR MOBILE
-    <div className="min-h-[100dvh] pb-[calc(8rem+env(safe-area-inset-bottom))] font-sans text-slate-800 bg-slate-50 overflow-x-hidden">
+    // [FIX] EXTRA LARGE PADDING BOTTOM (pb-48) to clear floating elements
+    <div className="min-h-[100dvh] pb-48 font-sans text-slate-800 bg-slate-50 overflow-x-hidden">
       
       {/* HEADER */}
       <header className="bg-white/80 backdrop-blur-md px-6 py-6 border-b border-slate-100 sticky top-0 z-30 shadow-sm">
@@ -204,12 +204,19 @@ export default function DashboardPage() {
       {/* ANNOUNCEMENT BANNER */}
       <AnimatePresence>
         {announcement && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="px-6 pt-6">
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="px-6 pt-6 relative z-10">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-4 text-white shadow-lg shadow-blue-500/20 flex items-start gap-4 relative overflow-hidden">
-                    <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm shrink-0 animate-pulse"><Megaphone size={20} className="text-white"/></div>
-                    <div className="flex-1 pr-6"><h4 className="text-[10px] font-bold uppercase text-blue-100 tracking-widest mb-1">PENGUMUMAN</h4><p className="text-sm font-medium leading-relaxed">{announcement}</p></div>
-                    <button onClick={() => setAnnouncement(null)} className="absolute top-2 right-2 p-2 text-blue-200 hover:text-white hover:bg-white/10 rounded-full transition"><X size={16}/></button>
-                    <Megaphone size={80} className="absolute -bottom-4 -right-4 text-white opacity-10 -rotate-12"/>
+                    <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm shrink-0 animate-pulse relative z-10"><Megaphone size={20} className="text-white"/></div>
+                    <div className="flex-1 pr-8 relative z-10">
+                        <h4 className="text-[10px] font-bold uppercase text-blue-100 tracking-widest mb-1">PENGUMUMAN</h4>
+                        <p className="text-sm font-medium leading-relaxed">{announcement}</p>
+                    </div>
+                    {/* [FIX] Close Button: High Z-Index, Bigger Hit Area */}
+                    <button onClick={() => setAnnouncement(null)} className="absolute top-0 right-0 p-4 text-blue-200 hover:text-white z-50 transition">
+                        <X size={18}/>
+                    </button>
+                    {/* [FIX] Decoration: pointer-events-none to click-through */}
+                    <Megaphone size={80} className="absolute -bottom-4 -right-4 text-white opacity-10 -rotate-12 pointer-events-none z-0"/>
                 </div>
             </motion.div>
         )}
