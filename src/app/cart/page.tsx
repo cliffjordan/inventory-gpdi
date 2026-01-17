@@ -45,9 +45,17 @@ export default function CartPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push('/login'); return; }
     setCurrentUser(user);
+    
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
     setCurrentProfile(profile);
-    const { data: allMembers } = await supabase.from('profiles').select('*').order('full_name');
+    
+    // [PERBAIKAN] Filter agar Superuser tidak muncul di daftar pilihan member
+    const { data: allMembers } = await supabase
+        .from('profiles')
+        .select('*')
+        .neq('role', 'superuser') // <-- Filter: Role TIDAK SAMA DENGAN superuser
+        .order('full_name');
+        
     if (allMembers) setMembers(allMembers);
   };
 
