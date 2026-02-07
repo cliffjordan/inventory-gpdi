@@ -43,4 +43,4 @@ export default function FloatingCart() {
       </motion.div>
     </AnimatePresence>
   );
-}
+} 

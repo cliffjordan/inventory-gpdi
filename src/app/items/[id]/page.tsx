@@ -13,171 +13,180 @@ export default function ItemDetailsPage() {
   const params = useParams();
   const id = params?.id;
   
-  // 1. Ambil 'cart' juga selain 'addToCart' untuk pengecekan
   const { addToCart, cart } = useCart(); 
-
   const [item, setItem] = useState<any>(null);
   const [variants, setVariants] = useState<any[]>([]);
   const [selectedVariant, setSelectedVariant] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-
-  // State baru untuk menyimpan stok yang tampil (dinamis)
   const [currentStock, setCurrentStock] = useState(0);
 
   useEffect(() => {
     if (id) fetchItemDetails();
   }, [id]);
 
-  // 2. Setiap kali Cart atau SelectedVariant berubah, hitung ulang sisa stok
   useEffect(() => {
     if (selectedVariant) {
-      // Hitung berapa biji varian ini yang SUDAH ada di keranjang
-      const inCartCount = cart.filter(c => c.variant_id === selectedLoanVariantId(selectedVariant)).length;
-      
-      // Stok Tampil = Stok Database - Jumlah di Keranjang
-      const realStock = (selectedVariant.stock || 0) - inCartCount;
-      setCurrentStock(realStock > 0 ? realStock : 0);
+      const inCartItem = cart.find(c => c.variant_id === selectedVariant.id);
+      const inCartQty = inCartItem ? 1 : 0; 
+      const realStock = (selectedVariant.stock || 0) - inCartQty;
+      setCurrentStock(realStock < 0 ? 0 : realStock);
     }
-  }, [cart, selectedVariant]);
-
-  // Helper aman untuk ambil ID varian (antisipasi tipe data)
-  const selectedLoanVariantId = (variant: any) => variant.id;
+  }, [selectedVariant, cart]);
 
   const fetchItemDetails = async () => {
     try {
-      const { data: itemData, error } = await supabase.from('items').select('*').eq('id', id).single();
-      if (error) throw error;
+      setLoading(true);
+      const { data: itemData, error: itemError } = await supabase
+        .from('items')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (itemError) throw itemError;
       setItem(itemData);
 
-      // Pastikan ambil kolom 'stock' dari database
-      const { data: varData } = await supabase.from('variants').select('*, stock').eq('item_id', id).order('id');
-      setVariants(varData || []);
-      
-      if (varData && varData.length > 0) {
-        setSelectedVariant(varData[0]);
+      const { data: variantData, error: variantError } = await supabase
+        .from('variants')
+        .select('*')
+        .eq('item_id', id)
+        .order('stock', { ascending: false }); 
+
+      if (variantError) throw variantError;
+      setVariants(variantData || []);
+
+      if (variantData && variantData.length > 0) {
+        setSelectedVariant(variantData[0]);
       }
-    } catch (err: any) {
-      console.error(err);
-      toast.error("Gagal memuat barang.");
+    } catch (error: any) {
+      toast.error("Gagal memuat data: " + error.message);
+      router.push('/items'); // Redirect ke items jika error
     } finally {
       setLoading(false);
     }
   };
 
   const handleAddToCart = () => {
-    if (!selectedVariant) {
-        toast.error("Pilih varian barang terlebih dahulu!");
-        return;
-    }
-
-    // Cek Stok lagi sebelum tambah (Double Protection)
+    if (!selectedVariant) return;
     if (currentStock <= 0) {
-        toast.error("Stok habis! Anda sudah mengambil semua stok yang tersedia.");
+        toast.error("Stok varian ini habis (cek keranjang Anda).");
         return;
     }
 
     addToCart({
-        item_id: item.id,
         variant_id: selectedVariant.id,
+        item_id: item.id,
         name: item.name,
-        image_url: selectedVariant.image_url || item.base_image_url,
         color: selectedVariant.color,
         size: selectedVariant.size,
-        location: selectedVariant.location || 'Gudang Utama'
+        location: selectedVariant.location,
+        image_url: selectedVariant.image_url || item.base_image_url
     });
+    
+    toast.success("Masuk Keranjang!");
+    router.push('/cart');
   };
 
-  // Helper function untuk menampilkan stok per tombol varian
-  const getVariantStock = (variant: any) => {
-      const inCart = cart.filter(c => c.variant_id === variant.id).length;
-      const available = (variant.stock || 0) - inCart;
-      return available > 0 ? available : 0;
-  };
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-blue-600" size={40}/></div>;
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-slate-400" size={32}/></div>;
-
-  if (!item) return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-400"><Box size={48} className="mb-2"/><p>Barang tidak ditemukan.</p><Link href="/dashboard" className="mt-4 text-blue-600 font-bold hover:underline">Kembali ke Dashboard</Link></div>;
+  if (!item) return <div className="min-h-screen flex items-center justify-center"><p className="text-slate-400 font-bold">Barang tidak ditemukan.</p></div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 font-sans text-slate-800">
+    <div className="min-h-screen bg-white pb-32 font-sans text-slate-800">
       <Toaster position="top-center" />
+      
+      {/* HEADER - UPDATED LINK */}
+      <header className="p-6 sticky top-0 z-20 bg-white/80 backdrop-blur-md flex items-center justify-between shadow-sm border-b border-slate-100">
+        {/* [UBAH] href="/items" agar kembali ke list barang */}
+        <Link href="/items" className="p-2 -ml-2 hover:bg-slate-50 rounded-full transition-colors"><ChevronLeft size={24} className="text-slate-800" /></Link>
+        <h1 className="font-black text-sm uppercase tracking-widest text-slate-400">Detail Barang</h1>
+        <div className="w-8"></div>
+      </header>
 
-      {/* HEADER IMAGE */}
-      <div className="relative h-72 bg-slate-200">
-        {item.base_image_url ? (
-            <img src={item.base_image_url} alt={item.name} className="w-full h-full object-cover" />
-        ) : (
-            <div className="w-full h-full flex items-center justify-center text-slate-400">
-                <Box size={64} strokeWidth={1}/>
+      <main className="p-6">
+        {/* IMAGE CONTAINER */}
+        <div className="relative aspect-square bg-white rounded-[2.5rem] overflow-hidden shadow-sm border border-slate-100 mb-6 group">
+            {(selectedVariant?.image_url || item.base_image_url) ? (
+                <img 
+                    src={selectedVariant?.image_url || item.base_image_url} 
+                    alt={item.name} 
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                />
+            ) : (
+                <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-300">
+                    <Box size={64} />
+                </div>
+            )}
+            
+            <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
+                <span className="bg-white/90 backdrop-blur px-4 py-2 rounded-2xl text-xs font-black shadow-sm border border-white/50 text-slate-800 uppercase tracking-wide">
+                    {selectedVariant?.location ? (
+                        <span className="flex items-center gap-1"><MapPin size={14} className="text-red-500"/> {selectedVariant.location}</span>
+                    ) : "Lokasi -"}
+                </span>
             </div>
-        )}
-        <button onClick={() => router.back()} className="absolute top-6 left-6 p-3 bg-white/30 backdrop-blur-md rounded-full text-white hover:bg-white/50 transition shadow-sm">
-            <ChevronLeft size={24}/>
-        </button>
-        <div className="absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-slate-50 to-transparent"></div>
-      </div>
+        </div>
 
-      {/* CONTENT */}
-      <div className="px-6 -mt-10 relative z-10">
-        <div className="bg-white rounded-[2rem] p-6 shadow-xl border border-slate-100">
-            <div className="mb-6">
-                <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-3 py-1 rounded-full uppercase tracking-wider">{item.category}</span>
-                <h1 className="text-2xl font-black text-slate-900 mt-3 leading-tight">{item.name}</h1>
+        {/* INFO */}
+        <div className="space-y-6">
+            <div>
+                <h1 className="text-3xl font-black text-slate-900 leading-tight mb-2">{item.name}</h1>
+                <p className="text-slate-500 font-medium leading-relaxed text-sm">{item.description || "Tidak ada deskripsi."}</p>
             </div>
 
-            {/* VARIANT SELECTOR */}
-            <div className="mb-8">
-                <label className="text-xs font-bold text-slate-400 uppercase mb-3 block ml-1">Pilih Varian</label>
-                <div className="space-y-3">
+            {/* VARIANTS */}
+            <div>
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Pilih Varian</p>
+                <div className="grid grid-cols-2 gap-3">
                     {variants.map((variant) => {
-                        const stockAvailable = getVariantStock(variant);
-                        const isOutOfStock = stockAvailable === 0;
+                        const inCartItem = cart.find(c => c.variant_id === variant.id);
+                        const inCartQty = inCartItem ? 1 : 0; 
+                        const stockAvailable = (variant.stock || 0) - inCartQty;
+                        const isOutOfStock = stockAvailable <= 0;
 
                         return (
                             <button 
-                                key={variant.id}
-                                onClick={() => !isOutOfStock && setSelectedVariant(variant)}
-                                disabled={isOutOfStock}
-                                className={`w-full p-4 rounded-2xl border flex items-center justify-between transition-all ${
-                                    isOutOfStock ? 'opacity-50 cursor-not-allowed bg-slate-100 border-slate-100 grayscale' :
-                                    selectedVariant?.id === variant.id ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500/20' : 'border-slate-100 bg-slate-50 hover:bg-white'
-                                }`}
+                                key={variant.id} 
+                                onClick={() => setSelectedVariant(variant)}
+                                className={`p-4 rounded-2xl border-2 text-left transition-all relative overflow-hidden group ${selectedVariant?.id === variant.id ? 'border-blue-600 bg-blue-50/50' : 'border-slate-100 bg-white hover:border-blue-200'}`}
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-4 h-4 rounded-full border border-slate-200 shadow-sm`} style={{ backgroundColor: variant.color?.toLowerCase() }}></div>
-                                    <div className="text-left">
-                                        <p className={`text-sm font-bold ${selectedVariant?.id === variant.id ? 'text-blue-700' : 'text-slate-700'}`}>
-                                            {variant.size} - {variant.color}
-                                        </p>
-                                        <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5"><MapPin size={10}/> {variant.location || 'Gudang Utama'}</p>
-                                    </div>
+                                <div className="flex justify-between items-start mb-2">
+                                    <div 
+                                        className="w-6 h-6 rounded-full shadow-sm border border-slate-200" 
+                                        style={{ backgroundColor: variant.color_hex || '#ccc' }} 
+                                    />
+                                    {selectedVariant?.id === variant.id && <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"/>}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <span className={`text-xs font-bold px-2 py-1 rounded ${isOutOfStock ? 'bg-red-100 text-red-500' : 'bg-slate-200 text-slate-600'}`}>
+                                <div>
+                                    <p className="font-black text-slate-800 text-sm uppercase">{variant.color}</p>
+                                    <p className="text-xs text-slate-400 font-bold mb-2">Size {variant.size}</p>
+                                    <span className={`text-[10px] font-bold px-2 py-1 rounded ${isOutOfStock ? 'bg-red-100 text-red-500' : 'bg-slate-200 text-slate-600'}`}>
                                         {isOutOfStock ? 'Habis' : `Sisa: ${stockAvailable}`}
                                     </span>
-                                    {selectedVariant?.id === variant.id && !isOutOfStock && <CheckCircle2 size={20} className="text-blue-500"/>}
+                                    {selectedVariant?.id === variant.id && !isOutOfStock && <CheckCircle2 size={20} className="text-blue-500 absolute top-4 right-4"/>}
                                 </div>
                             </button>
-                        )
+                        );
                     })}
-                    {variants.length === 0 && <p className="text-sm text-slate-400 italic">Stok habis atau belum diinput.</p>}
                 </div>
             </div>
+        </div>
+      </main>
 
-            {/* ACTION BUTTON */}
+      {/* FOOTER ACTION */}
+      <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t border-slate-50 z-10 rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+        <div className="flex items-center gap-4">
+            <div className="flex-1">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Stok Tersedia</p>
+                <p className={`text-2xl font-black ${currentStock > 0 ? 'text-slate-900' : 'text-red-500'}`}>{currentStock} <span className="text-sm font-bold text-slate-400">Unit</span></p>
+            </div>
             <button 
                 onClick={handleAddToCart}
-                disabled={!selectedVariant || currentStock === 0}
-                className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-500/30 flex items-center justify-center gap-2 active:scale-95 transition-all disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed"
+                disabled={currentStock <= 0}
+                className={`flex-1 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-xl transition-all active:scale-95 ${currentStock > 0 ? 'bg-slate-900 text-white shadow-slate-900/20 hover:bg-slate-800' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}`}
             >
-                <ShoppingCart size={20}/>
-                {currentStock === 0 ? "STOK HABIS" : "TAMBAH KE KERANJANG"}
+                <ShoppingCart size={18} />
+                {currentStock > 0 ? "Pinjam Barang" : "Stok Habis"}
             </button>
-
-            <p className="text-center text-[10px] text-slate-400 mt-4 px-4 leading-relaxed">
-                Stok akan berkurang otomatis saat Anda menambahkan barang ke keranjang.
-            </p>
         </div>
       </div>
     </div>

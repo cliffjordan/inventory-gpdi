@@ -4,12 +4,29 @@ on:
   schedule:
     # Jalan setiap hari jam 00:00 UTC (07:00 WIB)
     - cron: '0 0 * * *'
-  workflow_dispatch: # Tombol manual untuk test ping
+  workflow_dispatch:
 
 jobs:
   ping-supabase:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase Project
-        # URL sudah diperbaiki (hanya satu https://)
-        run: curl -I https://shbxnmjarrbbeuoccigl.supabase.co/rest/v1/
+      - name: Ping Supabase Database
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          # Menggunakan endpoint health check atau rest v1 dengan auth
+          # Ini mensimulasikan akses nyata ke database
+          response=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$SUPABASE_URL/rest/v1/" \
+            -H "apikey: $SUPABASE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_KEY")
+            
+          echo "Supabase Response Code: $response"
+          
+          if [ "$response" -eq 200 ]; then
+            echo "SUCCESS: Supabase is active."
+          else
+            echo "WARNING: Received status $response. Check Supabase dashboard."
+            # Tetap exit 0 agar workflow tidak dianggap gagal (merah) jika hanya masalah koneksi sesaat
+            exit 0
+          fi
